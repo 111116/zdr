@@ -1,10 +1,11 @@
 import luisa
 from luisa.mathtypes import *
+import numpy as np
 
 @luisa.func
 def generate_ray(p):
     fov = 60 / 180 * 3.1415926
-    origin = float3(-0.01, 0.995, 5.0)
+    origin = float3(0.0, 1.0, 3.0)
     target = float3(0.0, 0.0, 0.0)
     up = float3(0.0, 1.0, 0.0)
     forward = normalize(target - origin)
@@ -16,11 +17,24 @@ def generate_ray(p):
     return luisa.make_ray(origin, direction, 0.0, 1e30)
 
 @luisa.func
+def read_bsdf(uv: float2):
+    p = uv * float2(texture_resolution-1)
+    ip = int2(p)
+    off = p - float2(ip)
+    # TODO boundary check
+    nearest = int2(p+0.499)
+    coord = nearest.x + texture_resolution.x * nearest.y
+    return float4(
+        material_buffer.read(coord * 4 + 0),
+        material_buffer.read(coord * 4 + 1),
+        material_buffer.read(coord * 4 + 2),
+        material_buffer.read(coord * 4 + 3))
+
+@luisa.func
 def direct_collocated(ray):
     hit = accel.trace_closest(ray, -1)
     if hit.miss():
         return float3(0.0)
-    return float3(1.0, 0.5, 0.3)
     i0 = triangle_buffer.read(hit.prim * 3 + 0)
     i1 = triangle_buffer.read(hit.prim * 3 + 1)
     i2 = triangle_buffer.read(hit.prim * 3 + 2)
@@ -39,7 +53,9 @@ def direct_collocated(ray):
     ng = normalize(cross(p1 - p0, p2 - p0))
     if dot(-ray.get_dir(), ng) < 1e-4 or dot(-ray.get_dir(), ns) < 1e-4:
         return float3(0.0)
-    # mat = read_bsdf(uv)
+    # return float3(uv, 0.5)
+    mat = read_bsdf(uv).xyz
+    return mat
     # li = intensity * (1/hit.ray_t)**2
     # return eval_bsdf_collocated(mat, ns, -ray.get_dir()) * li
 
@@ -58,6 +74,7 @@ def render(image, resolution, frame_id):
     image.write(coord, float4(radiance, 1.0))
 
 
+# load shape from obj file
 from load_obj import read_obj, concat_triangles
 file_path = 'sphere.obj'
 positions, tex_coords, normals, faces = read_obj(file_path)
@@ -71,9 +88,22 @@ accel = luisa.Accel()
 accel.add(v_buffer, triangle_buffer)
 accel.update()
 
+# read material maps
+def np_from_image(file, n_channels):
+    arr = luisa.lcapi.load_ldr_image(file)
+    assert len(arr.shape) == 3 and arr.shape[2] == 4
+    return arr[..., 0:n_channels]
+diffuse_arr = np_from_image('assets/wood-01-1k/diffuse.jpg', 3)
+roughness_arr = np_from_image('assets/wood-01-1k/roughness.jpg', 1)
+arr = np.concatenate((diffuse_arr, roughness_arr), axis=2)
+texture_resolution = int2(*arr.shape[0:2])
+# row, column, 4 floats (diffuse + roughness)
+arr = (arr.astype('float32')/255).flatten()
+material_buffer = luisa.buffer(arr)
+
+# render image
 res = 1024, 1024
 image = luisa.Image2D(*res, 4, float)
-render(image, float2(*res), 0, dispatch_size=res)
+render(image, int2(*res), 0, dispatch_size=res)
 luisa.synchronize()
-
 image.to_image("a.png") # Note: compatibility of image needs improvement
