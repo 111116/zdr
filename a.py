@@ -1,4 +1,5 @@
 import luisa
+from luisa.mathtypes import *
 
 @luisa.func
 def generate_ray(p):
@@ -12,16 +13,17 @@ def generate_ray(p):
     
     p = p * tan(0.5 * fov)
     direction = normalize(p.x * right + p.y * up + forward)
-    return make_ray(origin, direction, 0.0, 1e30)
+    return luisa.make_ray(origin, direction, 0.0, 1e30)
 
 @luisa.func
-def direct_collocated(ray, accel, heap):
+def direct_collocated(ray):
     hit = accel.trace_closest(ray, -1)
     if hit.miss():
         return float3(0.0)
-    i0 = heap.buffer_read(int, hit.inst, hit.prim * 3 + 0)
-    i1 = heap.buffer_read(int, hit.inst, hit.prim * 3 + 1)
-    i2 = heap.buffer_read(int, hit.inst, hit.prim * 3 + 2)
+    return float3(1.0, 0.5, 0.3)
+    i0 = triangle_buffer.read(hit.prim * 3 + 0)
+    i1 = triangle_buffer.read(hit.prim * 3 + 1)
+    i2 = triangle_buffer.read(hit.prim * 3 + 2)
     p0 = v_buffer.read(i0)
     p1 = v_buffer.read(i1)
     p2 = v_buffer.read(i2)
@@ -37,19 +39,20 @@ def direct_collocated(ray, accel, heap):
     ng = normalize(cross(p1 - p0, p2 - p0))
     if dot(-ray.get_dir(), ng) < 1e-4 or dot(-ray.get_dir(), ns) < 1e-4:
         return float3(0.0)
-    mat = read_bsdf(uv)
-    li = intensity * (1/hit.ray_t)**2
-    return eval_bsdf_collocated(mat, ns, -ray.get_dir()) * li
+    # mat = read_bsdf(uv)
+    # li = intensity * (1/hit.ray_t)**2
+    # return eval_bsdf_collocated(mat, ns, -ray.get_dir()) * li
 
 
 @luisa.func
-def render(image_buffer, accel, heap, resolution):
+def render(image, resolution, frame_id):
     coord = dispatch_id().xy
-    sampler = luisa.RandomSampler(int3(coord, frame_id)) # builtin RNG; the sobol sampler can be used instead to improve convergence
+    sampler = luisa.util.make_random_sampler3d(int3(int2(coord), frame_id))
+    # sampler = luisa.RandomSampler(int3(coord, frame_id)) # builtin RNG; the sobol sampler can be used instead to improve convergence
     # generate ray from camera
     pixel = 2.0 / resolution * (float2(coord) + sampler.next2f()) - 1.0
     ray = generate_ray(pixel)
-    radiance = direct_collocated(ray, accel, heap)
+    radiance = direct_collocated(ray)
     if any(isnan(radiance)):
         radiance = float3(0.0)
     image.write(coord, float4(radiance, 1.0))
@@ -60,14 +63,17 @@ file_path = 'sphere.obj'
 positions, tex_coords, normals, faces = read_obj(file_path)
 # upload shapes
 luisa.init()
-v_buffer = luisa.buffer([luisa.float3(*x) for x in positions])
-vt_buffer = luisa.buffer([luisa.float2(*x) for x in tex_coords])
-vn_buffer = luisa.buffer([luisa.float3(*x) for x in normals])
+v_buffer = luisa.buffer([float3(*x) for x in positions])
+vt_buffer = luisa.buffer([float2(*x) for x in tex_coords])
+vn_buffer = luisa.buffer([float3(*x) for x in normals])
 triangle_buffer = luisa.buffer(concat_triangles(faces))
 accel = luisa.Accel()
 accel.add(v_buffer, triangle_buffer)
 accel.update()
-luisa.synchronize()
 
 res = 1024, 1024
+image = luisa.Image2D(*res, 4, float)
+render(image, float2(*res), 0, dispatch_size=res)
+luisa.synchronize()
 
+image.to_image("a.png") # Note: compatibility of image needs improvement
