@@ -1,19 +1,20 @@
 import luisa
 from luisa.mathtypes import *
 import numpy as np
+import microfacet
 
 @luisa.func
 def generate_ray(p):
     fov = 60 / 180 * 3.1415926
-    origin = float3(0.0, 1.0, 3.0)
+    origin = float3(0.0, 1.0, 2.0)
     target = float3(0.0, 0.0, 0.0)
     up = float3(0.0, 1.0, 0.0)
     forward = normalize(target - origin)
     right = normalize(cross(forward, up))
-    up1 = cross(right, forward)
+    up_perp = cross(right, forward)
     
     p = p * tan(0.5 * fov)
-    direction = normalize(p.x * right + p.y * up + forward)
+    direction = normalize(p.x * right - p.y * up_perp + forward)
     return luisa.make_ray(origin, direction, 0.0, 1e30)
 
 @luisa.func
@@ -54,10 +55,14 @@ def direct_collocated(ray):
     if dot(-ray.get_dir(), ng) < 1e-4 or dot(-ray.get_dir(), ns) < 1e-4:
         return float3(0.0)
     # return float3(uv, 0.5)
-    mat = read_bsdf(uv).xyz
-    return mat
-    # li = intensity * (1/hit.ray_t)**2
-    # return eval_bsdf_collocated(mat, ns, -ray.get_dir()) * li
+    mat = read_bsdf(uv)
+    diffuse = mat.xyz
+    roughness = mat.w
+    specular = 0.5
+    beta = microfacet.ggx_brdf(-ray.get_dir(), -ray.get_dir(), ns, diffuse, 0.6, roughness)
+    intensity = float3(1.0)
+    li = intensity * (1/hit.ray_t)**2
+    return beta * li
 
 
 @luisa.func
@@ -95,15 +100,18 @@ def np_from_image(file, n_channels):
     return arr[..., 0:n_channels]
 diffuse_arr = np_from_image('assets/wood-01-1k/diffuse.jpg', 3)
 roughness_arr = np_from_image('assets/wood-01-1k/roughness.jpg', 1)
+# diffuse_arr = np_from_image('assets/wood_olive/wood_olive_wood_olive_basecolor.png', 3)
+# roughness_arr = np_from_image('assets/wood_olive/wood_olive_wood_olive_roughness.png', 1)
 arr = np.concatenate((diffuse_arr, roughness_arr), axis=2)
 texture_resolution = int2(*arr.shape[0:2])
 # row, column, 4 floats (diffuse + roughness)
-arr = (arr.astype('float32')/255).flatten()
+arr = ((arr.astype('float32')/255)**2.2).flatten()
 material_buffer = luisa.buffer(arr)
 
 # render image
 res = 1024, 1024
 image = luisa.Image2D(*res, 4, float)
+luisa.synchronize()
 render(image, int2(*res), 0, dispatch_size=res)
 luisa.synchronize()
 image.to_image("a.png") # Note: compatibility of image needs improvement
