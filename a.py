@@ -1,3 +1,4 @@
+import torch
 import luisa
 from luisa.mathtypes import *
 import numpy as np
@@ -145,17 +146,24 @@ file_path = 'assets/sphere.obj'
 positions, tex_coords, normals, faces = read_obj(file_path)
 # upload shapes
 luisa.init()
-# v_buffer = luisa.Buffer.from_dlpack(to_float3_numpy(positions))
-v_buffer = luisa.buffer([float3(*x) for x in positions])
-# vt_buffer = luisa.Buffer.from_dlpack(np.array(tex_coords))
-vt_buffer = luisa.buffer([float2(*x) for x in tex_coords])
-# vn_buffer = luisa.Buffer.from_dlpack(to_float3_numpy(normals))
-vn_buffer = luisa.buffer([float3(*x) for x in normals])
+
+def float3list_to_padded_tensor(l):
+    a = torch.tensor(l, dtype=torch.float32, device='cuda')
+    assert a.dim()==2 and a.shape[1]==3
+    n = a.shape[0]
+    b = torch.empty((n, 1), dtype=torch.float32, device='cuda')
+    w = torch.hstack((a,b))
+    return w.as_strided(size=(n,3), stride=(4,1))
+
+v_buffer = luisa.Buffer.from_dlpack(float3list_to_padded_tensor(positions))
+vt_buffer = luisa.Buffer.from_dlpack(torch.tensor(tex_coords, dtype=torch.float32, device='cuda'))
+vn_buffer = luisa.Buffer.from_dlpack(float3list_to_padded_tensor(normals))
 triangle_buffer = luisa.buffer(concat_triangles(faces))
 recompute_normal(v_buffer, vn_buffer, triangle_buffer)
 accel = luisa.Accel()
 accel.add(v_buffer, triangle_buffer)
 accel.update()
+
 
 # read material maps
 def np_from_image(file, n_channels):
@@ -167,16 +175,11 @@ def np_from_image(file, n_channels):
 diffuse_arr = np_from_image('assets/wood_olive/wood_olive_wood_olive_basecolor.png', 3)
 roughness_arr = np_from_image('assets/wood_olive/wood_olive_wood_olive_roughness.png', 1)
 arr = np.concatenate((diffuse_arr, roughness_arr), axis=2)
-# arr = np.zeros((1024, 1024, 4))
-texture_resolution = int2(*arr.shape[0:2])
 # row, column, 4 floats (diffuse + roughness)
+texture_resolution = int2(*arr.shape[0:2])
 arr = ((arr.astype('float32')/255)**2.2).flatten()
-# arr = arr.astype('float32').flatten()
 material_buffer = luisa.buffer(arr)
 
-# aa = material_buffer.numpy().reshape((1024, 1024, 4))**0.454*255
-# print(aa.shape)
-# Image.fromarray(aa[...,0:3].astype('uint8')).save("222.png")
 
 
 # render image
