@@ -28,4 +28,4 @@ def ggx_brdf(wi, wo, n, diffuse, specular, roughness):
     #     return luisa.float3(1.0, 0.0, 1.0)
     # if not f>0:
     #     return luisa.float3(0.0,0.0,1.0)
-    return ((d * f * g) / (4 * max(0.00001, dot(n,wi)) * max(0.00001, dot(n,wo))) + diffuse) * dot(wo,n)
+    return ((d * f * g) / (4 * max(0.00001, dot(n,wi)) * max(0.00001, dot(n,wo))) + diffuse/pi) * dot(wo,n)
