@@ -1,5 +1,6 @@
 import torch
 import luisa
+from luisa.autodiff import requires_grad, autodiff, backward, grad
 from luisa.mathtypes import *
 import numpy as np
 import microfacet
@@ -36,12 +37,12 @@ def read_bsdf(uv: float2, material_buffer, texture_res):
         material_buffer.read(coord * 4 + 3))
 
 @luisa.func
-def write_bsdf_grad(uv: float2, dmat):
-    coord = get_uv_coord(uv)
-    material_grad_buffer.atomic_fetch_add(coord * 4 + 0, dmat.x)
-    material_grad_buffer.atomic_fetch_add(coord * 4 + 1, dmat.y)
-    material_grad_buffer.atomic_fetch_add(coord * 4 + 2, dmat.z)
-    material_grad_buffer.atomic_fetch_add(coord * 4 + 3, dmat.w)
+def write_bsdf_grad(uv: float2, dmat, d_material_buffer, texture_res):
+    coord = get_uv_coord(uv, texture_res)
+    _ = d_material_buffer.atomic_fetch_add(coord * 4 + 0, dmat.x)
+    _ = d_material_buffer.atomic_fetch_add(coord * 4 + 1, dmat.y)
+    _ = d_material_buffer.atomic_fetch_add(coord * 4 + 2, dmat.z)
+    _ = d_material_buffer.atomic_fetch_add(coord * 4 + 3, dmat.w)
 
 @luisa.func
 def direct_collocated(ray, v_buffer, vt_buffer, vn_buffer, triangle_buffer,
@@ -79,10 +80,11 @@ def direct_collocated(ray, v_buffer, vt_buffer, vn_buffer, triangle_buffer,
 
 
 @luisa.func
-def direct_collocated_backward(ray, le_grad):
+def direct_collocated_backward(ray, v_buffer, vt_buffer, vn_buffer, triangle_buffer, accel,
+                               d_material_buffer, material_buffer, texture_res, le_grad):
     hit = accel.trace_closest(ray, -1)
     if hit.miss():
-        return float3(0.0)
+        return
     i0 = triangle_buffer.read(hit.prim * 3 + 0)
     i1 = triangle_buffer.read(hit.prim * 3 + 1)
     i2 = triangle_buffer.read(hit.prim * 3 + 2)
@@ -100,9 +102,9 @@ def direct_collocated_backward(ray, le_grad):
     ns = hit.interpolate(pn0, pn1, pn2)
     ng = normalize(cross(p1 - p0, p2 - p0))
     if dot(-ray.get_dir(), ng) < 1e-4 or dot(-ray.get_dir(), ns) < 1e-4:
-        return float3(0.0)
+        return
     # return float3(uv, 0.5)
-    mat = read_bsdf(uv)
+    mat = read_bsdf(uv, material_buffer, texture_res)
     with autodiff():
         requires_grad(mat)
         diffuse = mat.xyz
@@ -114,6 +116,7 @@ def direct_collocated_backward(ray, le_grad):
         le = beta * li
         backward(le, le_grad)
         mat_grad = grad(mat)
+    write_bsdf_grad(uv, mat_grad, d_material_buffer, texture_res)
     
 
 @luisa.func
@@ -132,15 +135,19 @@ def render_kernel(image, v_buffer, vt_buffer, vn_buffer, triangle_buffer, accel,
     image.write(coord, float4(radiance, 1.0))
 
 @luisa.func
-def render_backward(d_image, resolution, frame_id):
+def render_backward_kernel(d_image, v_buffer, vt_buffer, vn_buffer, triangle_buffer, accel, 
+                    d_material_buffer, material_buffer, texture_res, camera, spp, seed):
+    resolution = dispatch_size().xy
     coord = dispatch_id().xy
-    sampler = luisa.util.make_random_sampler3d(int3(int2(coord), frame_id))
+    # TODO spp
+    sampler = luisa.util.make_random_sampler3d(int3(int2(coord), seed))
     pixel = 2.0 / resolution * (float2(coord) + sampler.next2f()) - 1.0
-    ray = generate_ray(pixel)
+    ray = generate_ray(camera, pixel)
     le_grad = d_image.read(coord).xyz
     if any(isnan(le_grad)):
         le_grad = float3(0.0)
-    direct_collocated_backward(ray, le_grad)
+    direct_collocated_backward(ray, v_buffer, vt_buffer, vn_buffer, triangle_buffer, accel,
+                               d_material_buffer, material_buffer, texture_res, le_grad)
 
 
 
@@ -176,10 +183,11 @@ class Scene:
         diffuse_arr = np_from_image(diffuse_file, 3)
         roughness_arr = np_from_image(roughness_file, 1)
         arr = np.concatenate((diffuse_arr, roughness_arr), axis=2)
-        self.texture_res = int2(*arr.shape[0:2])
+        self.texture_res = arr.shape[0:2]
         arr = ((arr.astype('float32')/255)**2.2).flatten()
         # row, column, 4 floats (diffuse + roughness)
         self.material_buffer = luisa.buffer(arr)
+        self.d_material_buffer = luisa.Buffer(size=self.material_buffer.size, dtype=self.material_buffer.dtype)
         # set camera
         self.camera = luisa.struct(
             fov = 40 / 180 * 3.1415926,
@@ -192,10 +200,19 @@ class Scene:
         image = luisa.Image2D(*res, 4, float)
         render_kernel(image,
             self.v_buffer, self.vt_buffer, self.vn_buffer, self.triangle_buffer,
-            self.accel, self.material_buffer, self.texture_res, self.camera,
+            self.accel, self.material_buffer, int2(*self.texture_res), self.camera,
             spp, seed, dispatch_size=res)
         luisa.synchronize()
         return image
+    
+    def render_backward(self, d_image, res, spp, seed):
+        assert (d_image.width, d_image.height) == res
+        assert d_image.channel == 4 and d_image.dtype == float
+        render_backward_kernel(d_image,
+            self.v_buffer, self.vt_buffer, self.vn_buffer, self.triangle_buffer, self.accel,
+            self.d_material_buffer, self.material_buffer, int2(*self.texture_res), self.camera,
+            spp, seed, dispatch_size=res)
+        luisa.synchronize()
 
 
 if __name__ == "__main__":
@@ -205,4 +222,11 @@ if __name__ == "__main__":
     scene = Scene(obj_file, diffuse_file, roughness_file, use_face_normal=True)
     
     res = 1024, 1024
-    scene.render(res=(1024,1024), spp=1, seed=0).to_image("a.png")
+    I = scene.render(res=(1024,1024), spp=1, seed=0)
+    I.to_image("a.png")
+    # TODO d_material_buffer.zero_()
+    scene.render_backward(I, res=(1024,1024), spp=1, seed=1)
+    dm = torch.from_dlpack(scene.d_material_buffer)
+    a = dm.reshape((*scene.texture_res, -1))
+    from PIL import Image
+    Image.fromarray((a[...,0:3].clamp(min=0, max=1)**0.454*255).cpu().numpy().astype("uint8")).save("d.png")

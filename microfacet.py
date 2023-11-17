@@ -24,8 +24,4 @@ def ggx_brdf(wi, wo, n, diffuse, specular, roughness):
     d = ggx_distribution(n, h, alpha)
     f = fresnel_schlick(clamp(dot(wo,h), 0.00001, 1.0), specular)
     g = smith_geometry(n, wi, alpha) * smith_geometry(n, wo, alpha)
-    # if not (1 - dot(wo,h)) ** 5 > -0.0001:
-    #     return luisa.float3(1.0, 0.0, 1.0)
-    # if not f>0:
-    #     return luisa.float3(0.0,0.0,1.0)
     return ((d * f * g) / (4 * max(0.00001, dot(n,wi)) * max(0.00001, dot(n,wo))) + diffuse/pi) * dot(wo,n)
