@@ -21,7 +21,7 @@ def generate_ray(p):
 
 @luisa.func
 def get_uv_coord(uv: float2):
-    p = uv * float2(texture_resolution-1)
+    p = float2(uv.x, 1.0-uv.y) * float2(texture_resolution-1)
     ip = int2(p)
     off = p - float2(ip)
     # TODO boundary check
@@ -72,7 +72,7 @@ def direct_collocated(ray):
     mat = read_bsdf(uv)
     diffuse = mat.xyz
     roughness = mat.w
-    specular = 0.5
+    specular = 0.04
     beta = microfacet.ggx_brdf(-ray.get_dir(), -ray.get_dir(), ns, diffuse, specular, roughness)
     intensity = float3(1.0)
     li = intensity * (1/hit.ray_t)**2
@@ -108,7 +108,7 @@ def direct_collocated_backward(ray, le_grad):
         requires_grad(mat)
         diffuse = mat.xyz
         roughness = mat.w
-        specular = 0.5
+        specular = 0.04
         beta = microfacet.ggx_brdf(-ray.get_dir(), -ray.get_dir(), ns, diffuse, specular, roughness)
         intensity = float3(1.0)
         li = intensity * (1/hit.ray_t)**2
