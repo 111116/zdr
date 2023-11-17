@@ -6,32 +6,29 @@ import microfacet
 from load_obj import read_obj, concat_triangles
 from recompute_normal import recompute_normal
 
-@luisa.func
-def generate_ray(p):
-    fov = 40 / 180 * 3.1415926
-    origin = float3(1.0, 0.5, 0.0)
-    target = float3(0.0, 0.0, 0.0)
-    up = float3(0.0, 1.0, 0.0)
-    forward = normalize(target - origin)
-    right = normalize(cross(forward, up))
-    up_perp = cross(right, forward)
-    
-    p = p * tan(0.5 * fov)
-    direction = normalize(p.x * right - p.y * up_perp + forward)
-    return luisa.make_ray(origin, direction, 0.0, 1e30)
+luisa.init()
 
 @luisa.func
-def get_uv_coord(uv: float2):
-    p = float2(uv.x, 1.0-uv.y) * float2(texture_resolution-1)
+def generate_ray(camera, p):
+    forward = normalize(camera.target - camera.origin)
+    right = normalize(cross(forward, camera.up))
+    up_perp = cross(right, forward)
+    p = p * tan(0.5 * camera.fov)
+    direction = normalize(p.x * right - p.y * up_perp + forward)
+    return luisa.make_ray(camera.origin, direction, 0.0, 1e30)
+
+@luisa.func
+def get_uv_coord(uv: float2, texture_res: int2):
+    p = float2(uv.x, 1.0-uv.y) * float2(texture_res-1)
     ip = int2(p)
     off = p - float2(ip)
     # TODO boundary check
     nearest = int2(p+0.499)
-    return nearest.x + texture_resolution.x * nearest.y
+    return nearest.x + texture_res.x * nearest.y
 
 @luisa.func
-def read_bsdf(uv: float2):
-    coord = get_uv_coord(uv)
+def read_bsdf(uv: float2, material_buffer, texture_res):
+    coord = get_uv_coord(uv, texture_res)
     return float4(
         material_buffer.read(coord * 4 + 0),
         material_buffer.read(coord * 4 + 1),
@@ -47,7 +44,8 @@ def write_bsdf_grad(uv: float2, dmat):
     material_grad_buffer.atomic_fetch_add(coord * 4 + 3, dmat.w)
 
 @luisa.func
-def direct_collocated(ray):
+def direct_collocated(ray, v_buffer, vt_buffer, vn_buffer, triangle_buffer,
+                                 accel, material_buffer, texture_res):
     hit = accel.trace_closest(ray, -1)
     if hit.miss():
         return float3(0.0)
@@ -70,7 +68,7 @@ def direct_collocated(ray):
     if dot(-ray.get_dir(), ng) < 1e-4 or dot(-ray.get_dir(), ns) < 1e-4:
         return float3(0.0)
     # return float3(uv, 0.5)
-    mat = read_bsdf(uv)
+    mat = read_bsdf(uv, material_buffer, texture_res)
     diffuse = mat.xyz
     roughness = mat.w
     specular = 0.04
@@ -119,12 +117,16 @@ def direct_collocated_backward(ray, le_grad):
     
 
 @luisa.func
-def render(image, resolution, frame_id):
+def render_kernel(image, v_buffer, vt_buffer, vn_buffer, triangle_buffer, accel, 
+                  material_buffer, texture_res, camera, spp, seed):
+    resolution = dispatch_size().xy
     coord = dispatch_id().xy
-    sampler = luisa.util.make_random_sampler3d(int3(int2(coord), frame_id))
+    # TODO spp
+    sampler = luisa.util.make_random_sampler3d(int3(int2(coord), seed))
     pixel = 2.0 / resolution * (float2(coord) + sampler.next2f()) - 1.0
-    ray = generate_ray(pixel)
-    radiance = direct_collocated(ray)
+    ray = generate_ray(camera, pixel)
+    radiance = direct_collocated(ray, v_buffer, vt_buffer, vn_buffer, triangle_buffer,
+                                 accel, material_buffer, texture_res)
     if any(isnan(radiance)):
         radiance = float3(0.0)
     image.write(coord, float4(radiance, 1.0))
@@ -141,11 +143,6 @@ def render_backward(d_image, resolution, frame_id):
     direct_collocated_backward(ray, le_grad)
 
 
-# load shape from obj file
-file_path = 'assets/sphere.obj'
-positions, tex_coords, normals, faces = read_obj(file_path)
-# upload shapes
-luisa.init()
 
 def float3list_to_padded_tensor(l):
     a = torch.tensor(l, dtype=torch.float32, device='cuda')
@@ -155,37 +152,57 @@ def float3list_to_padded_tensor(l):
     w = torch.hstack((a,b))
     return w.as_strided(size=(n,3), stride=(4,1))
 
-v_buffer = luisa.Buffer.from_dlpack(float3list_to_padded_tensor(positions))
-vt_buffer = luisa.Buffer.from_dlpack(torch.tensor(tex_coords, dtype=torch.float32, device='cuda'))
-vn_buffer = luisa.Buffer.from_dlpack(float3list_to_padded_tensor(normals))
-triangle_buffer = luisa.buffer(concat_triangles(faces))
-recompute_normal(v_buffer, vn_buffer, triangle_buffer)
-accel = luisa.Accel()
-accel.add(v_buffer, triangle_buffer)
-accel.update()
-
-
-# read material maps
 def np_from_image(file, n_channels):
     arr = luisa.lcapi.load_ldr_image(file)
-    assert len(arr.shape) == 3 and arr.shape[2] == 4
+    assert arr.ndim == 3 and arr.shape[2] == 4
     return arr[..., 0:n_channels]
-# diffuse_arr = np_from_image('assets/wood-01-1k/diffuse.jpg', 3)
-# roughness_arr = np_from_image('assets/wood-01-1k/roughness.jpg', 1)
-diffuse_arr = np_from_image('assets/wood_olive/wood_olive_wood_olive_basecolor.png', 3)
-roughness_arr = np_from_image('assets/wood_olive/wood_olive_wood_olive_roughness.png', 1)
-arr = np.concatenate((diffuse_arr, roughness_arr), axis=2)
-# row, column, 4 floats (diffuse + roughness)
-texture_resolution = int2(*arr.shape[0:2])
-arr = ((arr.astype('float32')/255)**2.2).flatten()
-material_buffer = luisa.buffer(arr)
 
 
+class Scene:
+    def __init__(self, obj_file, diffuse_file, roughness_file, use_face_normal=False):
+        # load geometry from obj file
+        # TODO recompute normal if not availble
+        positions, tex_coords, normals, faces = read_obj(obj_file)
+        self.v_buffer = luisa.Buffer.from_dlpack(float3list_to_padded_tensor(positions))
+        self.vt_buffer = luisa.Buffer.from_dlpack(torch.tensor(tex_coords, dtype=torch.float32, device='cuda'))
+        self.vn_buffer = luisa.Buffer.from_dlpack(float3list_to_padded_tensor(normals))
+        self.triangle_buffer = luisa.buffer(concat_triangles(faces))
+        if use_face_normal:
+            recompute_normal(self.v_buffer, self.vn_buffer, self.triangle_buffer)
+        self.accel = luisa.Accel()
+        self.accel.add(self.v_buffer, self.triangle_buffer)
+        self.accel.update()
+        # load material
+        diffuse_arr = np_from_image(diffuse_file, 3)
+        roughness_arr = np_from_image(roughness_file, 1)
+        arr = np.concatenate((diffuse_arr, roughness_arr), axis=2)
+        self.texture_res = int2(*arr.shape[0:2])
+        arr = ((arr.astype('float32')/255)**2.2).flatten()
+        # row, column, 4 floats (diffuse + roughness)
+        self.material_buffer = luisa.buffer(arr)
+        # set camera
+        self.camera = luisa.struct(
+            fov = 40 / 180 * 3.1415926,
+            origin = float3(1.0, 0.5, 0.0),
+            target = float3(0.0, 0.0, 0.0),
+            up = float3(0.0, 1.0, 0.0)
+        )
 
-# render image
-res = 1024, 1024
-image = luisa.Image2D(*res, 4, float)
-luisa.synchronize()
-render(image, int2(*res), 0, dispatch_size=res)
-luisa.synchronize()
-image.to_image("a.png") # Note: compatibility of image needs improvement
+    def render(self, res, spp, seed):
+        image = luisa.Image2D(*res, 4, float)
+        render_kernel(image,
+            self.v_buffer, self.vt_buffer, self.vn_buffer, self.triangle_buffer,
+            self.accel, self.material_buffer, self.texture_res, self.camera,
+            spp, seed, dispatch_size=res)
+        luisa.synchronize()
+        return image
+
+
+if __name__ == "__main__":
+    obj_file = 'assets/sphere.obj'
+    diffuse_file = 'assets/wood_olive/wood_olive_wood_olive_basecolor.png'
+    roughness_file = 'assets/wood_olive/wood_olive_wood_olive_roughness.png'
+    scene = Scene(obj_file, diffuse_file, roughness_file, use_face_normal=True)
+    
+    res = 1024, 1024
+    scene.render(res=(1024,1024), spp=1, seed=0).to_image("a.png")
