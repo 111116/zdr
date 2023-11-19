@@ -6,17 +6,10 @@ import numpy as np
 import microfacet
 from load_obj import read_obj, concat_triangles
 from recompute_normal import recompute_normal
+from uvgrad import render_uvgrad_kernel
+from camera import generate_ray
 
 luisa.init()
-
-@luisa.func
-def generate_ray(camera, p):
-    forward = normalize(camera.target - camera.origin)
-    right = normalize(cross(forward, camera.up))
-    up_perp = cross(right, forward)
-    p = p * tan(0.5 * camera.fov)
-    direction = normalize(p.x * right - p.y * up_perp + forward)
-    return luisa.make_ray(camera.origin, direction, 0.0, 1e30)
 
 @luisa.func
 def get_uv_coord(uv: float2, texture_res: int2):
@@ -195,10 +188,11 @@ class Scene:
             target = float3(0.0, 0.0, 0.0),
             up = float3(0.0, 1.0, 0.0)
         )
+        self.render_kernel = render_kernel
 
     def render(self, res, spp, seed):
         image = luisa.Image2D(*res, 4, float)
-        render_kernel(image,
+        self.render_kernel(image,
             self.v_buffer, self.vt_buffer, self.vn_buffer, self.triangle_buffer,
             self.accel, self.material_buffer, int2(*self.texture_res), self.camera,
             spp, seed, dispatch_size=res)
@@ -220,6 +214,7 @@ if __name__ == "__main__":
     diffuse_file = 'assets/wood_olive/wood_olive_wood_olive_basecolor.png'
     roughness_file = 'assets/wood_olive/wood_olive_wood_olive_roughness.png'
     scene = Scene(obj_file, diffuse_file, roughness_file, use_face_normal=True)
+    # scene.render_kernel = render_uvgrad_kernel
     
     res = 1024, 1024
     I = scene.render(res=(1024,1024), spp=1, seed=0)
