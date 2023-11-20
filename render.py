@@ -89,6 +89,8 @@ class Scene:
         
         @staticmethod
         def backward(ctx, grad_output):
+            if 0 in grad_output.stride():
+                grad_output = grad_output.clone()
             ctx.scene().render_backward(grad_output, *ctx.args)
             return tuple([None]*(len(ctx.args)+2))
             
@@ -108,5 +110,6 @@ if __name__ == "__main__":
     from PIL import Image
     Image.fromarray((I[...,0:3].clamp(min=0,max=1)**0.454*255).to(torch.uint8).cpu().numpy()).save('a.png')
     scene.d_material.zero_()
-    (I**2/2).sum().backward()
+    I.sum().backward()
     Image.fromarray((scene.d_material[...,0:3].clamp(min=0, max=1)**0.454*255).cpu().numpy().astype("uint8")).save("d.png")
+    Image.fromarray((scene.d_material[...,3].clamp(min=0, max=1)**0.454*255).cpu().numpy().astype("uint8")).save("dr.png")
