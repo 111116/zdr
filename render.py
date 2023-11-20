@@ -21,12 +21,6 @@ def float3list_to_padded_tensor(l):
     w = torch.hstack((a,b))
     return w.as_strided(size=(n,3), stride=(4,1))
 
-def np_from_image(file, n_channels):
-    arr = luisa.lcapi.load_ldr_image(file)
-    assert arr.ndim == 3 and arr.shape[2] == 4
-    return arr[..., 0:n_channels]
-
-
 class Scene:
     def __init__(self, obj_file, use_face_normal=False):
         # load geometry from obj file
@@ -52,7 +46,7 @@ class Scene:
     def render_forward(self, material, res, spp, seed):
         assert material.ndim == 3 and material.shape[2] == 4
         texture_res = material.shape[0:2]
-        material_buffer = luisa.Buffer.from_dlpack(material.flatten())
+        material_buffer = luisa.Buffer.from_dlpack(material.detach().flatten())
         image = torch.empty((res[1], res[0], 4), dtype=torch.float32, device='cuda')
         image_buffer = luisa.Buffer.from_dlpack(image.reshape((res[0]*res[1], 4)))
         self.render_kernel(image_buffer,
@@ -65,18 +59,16 @@ class Scene:
     def render_backward(self, grad_output, material, res, spp, seed):
         assert material.ndim == 3 and material.shape[2] == 4
         texture_res = material.shape[0:2]
-        material_buffer = luisa.Buffer.from_dlpack(material.flatten())
-        d_material = torch.empty_like(material)
-        d_material_buffer = luisa.Buffer.from_dlpack(material.flatten())
-        d_image = luisa.Buffer.from_dlpack(grad_output.reshape((res[0]*res[1], 4)))
+        material_buffer = luisa.Buffer.from_dlpack(material.detach().flatten())
+        # Can't use empty_like here because d_material have to be contiguous
+        d_material = torch.empty(material.size(), dtype=material.dtype, device=material.device)
+        d_material_buffer = luisa.Buffer.from_dlpack(d_material.flatten())
+        d_image = luisa.Buffer.from_dlpack(grad_output.reshape((res[0]*res[1], 4)).contiguous())
         render_backward_kernel(d_image,
             self.v_buffer, self.vt_buffer, self.vn_buffer, self.triangle_buffer, self.accel,
             d_material_buffer, material_buffer, int2(*texture_res), self.camera,
             spp, seed+1, dispatch_size=res)
         luisa.synchronize()
-        print("g", grad_output.min(), grad_output.max())
-        print("m", material.min(), material.max())
-        print("dm", d_material.min(), d_material.max())
         return d_material, None, None, None, None
 
     class RenderOperator(torch.autograd.Function):
@@ -90,8 +82,6 @@ class Scene:
         @staticmethod
         def backward(ctx, grad_output):
             material, = ctx.saved_tensors
-            if 0 in grad_output.stride():
-                grad_output = grad_output.clone()
             return ctx.scene().render_backward(grad_output, material, *ctx.args)
             
     def render(self, material, *, res, spp, seed):
@@ -101,23 +91,12 @@ class Scene:
 if __name__ == "__main__":
 
     def load_material(diffuse_file, roughness_file):
-        # load material
         from torchvision.transforms import ToTensor
         diffuse_img = ToTensor()(Image.open(diffuse_file)).cuda()
         roughness_img = ToTensor()(Image.open(roughness_file)).cuda()
         assert roughness_img.shape[0] == 1
         mat = torch.vstack((diffuse_img, roughness_img)).permute((1,2,0))**2.2
-        print(mat.shape, mat.stride(), mat.dtype)
         return mat
-        # roughness_arr = np_from_image(roughness_file, 1)
-        # arr = np.concatenate((diffuse_arr, roughness_arr), axis=2)
-    # arr = ((arr.astype('float32')/255)**2.2).flatten()
-    # row, column, 4 floats (diffuse + roughness)
-    # self.material_buffer = luisa.buffer(arr)
-    # self.d_material_buffer = luisa.Buffer(size=self.material_buffer.size, dtype=self.material_buffer.dtype)
-    # self.material = torch.from_dlpack(self.material_buffer).reshape((*self.texture_res, -1))
-    # self.d_material = torch.from_dlpack(self.d_material_buffer).reshape((*self.texture_res, -1))
-
     obj_file = 'assets/sphere.obj'
     scene = Scene(obj_file, use_face_normal=True)
     diffuse_file = 'assets/wood_olive/wood_olive_wood_olive_basecolor.png'
