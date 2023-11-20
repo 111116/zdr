@@ -6,6 +6,7 @@ from load_obj import read_obj, concat_triangles
 from recompute_normal import recompute_normal
 from uvgrad import render_uvgrad_kernel
 from integrator import render_kernel, render_backward_kernel
+import weakref
 
 luisa.init()
 
@@ -82,13 +83,13 @@ class Scene:
     class RenderOperator(torch.autograd.Function):
         @staticmethod
         def forward(ctx, dummy, self, *args):
-            ctx.scene = self
+            ctx.scene = weakref.ref(self)
             ctx.args = args
             return self.render_forward(*args)
         
         @staticmethod
         def backward(ctx, grad_output):
-            ctx.scene.render_backward(grad_output, *ctx.args)
+            ctx.scene().render_backward(grad_output, *ctx.args)
             return tuple([None]*(len(ctx.args)+2))
             
     def render(self, res, spp, seed):
