@@ -118,7 +118,7 @@ def render_kernel(image, v_buffer, vt_buffer, vn_buffer, triangle_buffer, accel,
                                  accel, material_buffer, texture_res)
     if any(isnan(radiance)):
         radiance = float3(0.0)
-    image.write(coord, float4(radiance, 1.0))
+    image.write(coord.x + coord.y * resolution.x, float4(radiance, 1.0))
 
 @luisa.func
 def render_backward_kernel(d_image, v_buffer, vt_buffer, vn_buffer, triangle_buffer, accel, 
@@ -129,7 +129,7 @@ def render_backward_kernel(d_image, v_buffer, vt_buffer, vn_buffer, triangle_buf
     sampler = luisa.util.make_random_sampler3d(int3(int2(coord), seed))
     pixel = 2.0 / resolution * (float2(coord) + sampler.next2f()) - 1.0
     ray = generate_ray(camera, pixel)
-    le_grad = d_image.read(coord).xyz
+    le_grad = d_image.read(coord.x + coord.y * resolution.x).xyz
     if any(isnan(le_grad)):
         le_grad = float3(0.0)
     direct_collocated_backward(ray, v_buffer, vt_buffer, vn_buffer, triangle_buffer, accel,
