@@ -124,7 +124,7 @@ class Scene:
             material, = ctx.saved_tensors
             if material.grad is None:
                 # Can't use empty_like here because d_material have to be contiguous
-                material.grad = torch.empty(material.size(), dtype=material.dtype, device=material.device)
+                material.grad = torch.zeros(material.size(), dtype=material.dtype, device=material.device)
             return ctx.scene().render_backward(grad_output, material.grad, material.detach(), *ctx.args)
 
     def render(self, material, *, res, spp, seed):
