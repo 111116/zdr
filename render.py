@@ -88,6 +88,7 @@ class Scene:
         return image
     
     def render_backward(self, grad_output, d_material, material, res, spp, seed):
+        torch.cuda.synchronize() # grad_output may not be ready
         assert material.ndim == 3 and material.shape[2] == 4
         texture_res = material.shape[0:2]
         material_buffer = luisa.Buffer.from_dlpack(material.flatten())
