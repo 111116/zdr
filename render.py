@@ -150,6 +150,7 @@ class Scene:
 # Example Usage
 if __name__ == "__main__":
     from tqdm import tqdm
+    import imageio
     def load_material(diffuse_file, roughness_file):
         from torchvision.transforms import ToTensor
         diffuse_img = ToTensor()(Image.open(diffuse_file)).cuda()
@@ -161,14 +162,23 @@ if __name__ == "__main__":
     scene = Scene(obj_file, use_face_normal=True)
     diffuse_file = 'assets/wood_olive/wood_olive_wood_olive_basecolor.png'
     roughness_file = 'assets/wood_olive/wood_olive_wood_olive_roughness.png'
-    material = load_material(diffuse_file, roughness_file)
-    material.requires_grad_()
+    material_GT = load_material(diffuse_file, roughness_file)
+    I_GT = scene.render(material_GT, res=(1024,1024), spp=1, seed=0)
     # scene.render_kernel = render_uvgrad_kernel
-    for it in tqdm(range(1000)):
-        I = scene.render(material, res=(1024,1024), spp=1, seed=0)
-        I.sum().backward()
 
-    quit()
-    Image.fromarray((I[...,0:3].clamp(min=0,max=1)**0.454*255).to(torch.uint8).cpu().numpy()).save('a.png')
-    Image.fromarray((material.grad[...,0:3].clamp(min=0, max=1)**0.454*255).cpu().numpy().astype("uint8")).save("d.png")
-    Image.fromarray((material.grad[...,3].clamp(min=0, max=1)**0.454*255).cpu().numpy().astype("uint8")).save("dr.png")
+    # Optimize using gradient descent
+    material = torch.rand((1024,1024,4), device='cuda')
+    material.requires_grad_()
+    optimizer = torch.optim.Adam([material], lr=0.01)
+    for it in tqdm(range(2000)):
+        optimizer.zero_grad()
+        I = scene.render(material, res=(1024,1024), spp=1, seed=0)
+        ((I-I_GT)**2).sum().backward()
+        optimizer.step()
+        material.data.clamp_(min=0, max=1)
+
+    Image.fromarray((I_GT[...,0:3].clamp(min=0,max=1)**0.454*255).to(torch.uint8).cpu().numpy()).save('results/gt.png')
+    Image.fromarray((I[...,0:3].clamp(min=0,max=1)**0.454*255).to(torch.uint8).cpu().numpy()).save('results/a.png')
+    Image.fromarray((material[...,0:3].clamp(min=0, max=1)**0.454*255).detach().cpu().numpy().astype("uint8")).save("results/d.png")
+    Image.fromarray((material[...,3].clamp(min=0, max=1)**0.454*255).detach().cpu().numpy().astype("uint8")).save("results/dr.png")
+    print("DIFF", ((I-I_GT)**2).sum())
