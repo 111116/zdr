@@ -22,7 +22,7 @@ scene = Scene(obj_file, use_face_normal=True)
 diffuse_file = 'assets/wood_olive/wood_olive_wood_olive_basecolor.png'
 roughness_file = 'assets/wood_olive/wood_olive_wood_olive_roughness.png'
 material_GT = load_material(diffuse_file, roughness_file)
-I_GT = sum(scene.render(material_GT, res=(1024,1024), spp=1, seed=random.randint(0, 2147483647)) for _ in range(100))/100
+I_GT = scene.render(material_GT, res=(1024,1024), spp=64, seed=random.randint(0, 2147483647))
 
 # scene.render_kernel = render_uvgrad_kernel
 
@@ -30,9 +30,9 @@ I_GT = sum(scene.render(material_GT, res=(1024,1024), spp=1, seed=random.randint
 material = torch.rand((1024,1024,4), device='cuda')
 material.requires_grad_()
 optimizer = torch.optim.Adam([material], lr=0.01)
-for it in tqdm(range(2000)):
+for it in tqdm(range(1000)):
     optimizer.zero_grad()
-    I = scene.render(material, res=(1024,1024), spp=1, seed=random.randint(0, 2147483647))
+    I = scene.render(material, res=(1024,1024), spp=4, seed=random.randint(0, 2147483647))
     ((I-I_GT)**2).sum().backward()
     optimizer.step()
     material.data.clamp_(min=0, max=1)

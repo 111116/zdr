@@ -125,7 +125,7 @@ class Scene:
                 material.grad = torch.zeros(material.size(), dtype=material.dtype, device=material.device)
             return ctx.scene().render_backward(grad_output, material.grad, material.detach(), *ctx.args)
 
-    def render(self, material, *, res, spp, seed):
+    def render(self, material, *, res, spp, seed=0):
         """Renders the scene with the given material and rendering parameters.
 
         This operation is differentiable w.r.t. material.

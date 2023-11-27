@@ -110,27 +110,28 @@ def render_kernel(image, v_buffer, vt_buffer, vn_buffer, triangle_buffer, accel,
                   material_buffer, texture_res, camera, spp, seed):
     resolution = dispatch_size().xy
     coord = dispatch_id().xy
-    # TODO spp
-    sampler = luisa.util.make_random_sampler3d(int3(int2(coord), seed))
-    pixel = 2.0 / resolution * (float2(coord) + sampler.next2f()) - 1.0
-    ray = generate_ray(camera, pixel)
-    radiance = direct_collocated(ray, v_buffer, vt_buffer, vn_buffer, triangle_buffer,
-                                 accel, material_buffer, texture_res)
-    if any(isnan(radiance)):
-        radiance = float3(0.0)
-    image.write(coord.x + coord.y * resolution.x, float4(radiance, 1.0))
+    s = float3(0.0)
+    for it in range(spp):
+        sampler = luisa.util.make_random_sampler3d(int3(int2(coord), seed^(it*5087)))
+        pixel = 2.0 / resolution * (float2(coord) + sampler.next2f()) - 1.0
+        ray = generate_ray(camera, pixel)
+        radiance = direct_collocated(ray, v_buffer, vt_buffer, vn_buffer, triangle_buffer,
+                                    accel, material_buffer, texture_res)
+        if not any(isnan(radiance)):
+            s += radiance
+    image.write(coord.x + coord.y * resolution.x, float4(s/spp, 1.0))
 
 @luisa.func
 def render_backward_kernel(d_image, v_buffer, vt_buffer, vn_buffer, triangle_buffer, accel, 
                     d_material_buffer, material_buffer, texture_res, camera, spp, seed):
     resolution = dispatch_size().xy
     coord = dispatch_id().xy
-    # TODO spp
-    sampler = luisa.util.make_random_sampler3d(int3(int2(coord), seed))
-    pixel = 2.0 / resolution * (float2(coord) + sampler.next2f()) - 1.0
-    ray = generate_ray(camera, pixel)
-    le_grad = d_image.read(coord.x + coord.y * resolution.x).xyz
+    le_grad = d_image.read(coord.x + coord.y * resolution.x).xyz / spp
     if any(isnan(le_grad)):
         le_grad = float3(0.0)
-    direct_collocated_backward(ray, v_buffer, vt_buffer, vn_buffer, triangle_buffer, accel,
-                               d_material_buffer, material_buffer, texture_res, le_grad)
+    for it in range(spp):
+        sampler = luisa.util.make_random_sampler3d(int3(int2(coord), seed^(it*5087)))
+        pixel = 2.0 / resolution * (float2(coord) + sampler.next2f()) - 1.0
+        ray = generate_ray(camera, pixel)
+        direct_collocated_backward(ray, v_buffer, vt_buffer, vn_buffer, triangle_buffer, accel,
+                                   d_material_buffer, material_buffer, texture_res, le_grad)
