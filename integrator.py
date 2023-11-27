@@ -1,8 +1,8 @@
 import luisa
 from luisa.mathtypes import *
 from luisa.autodiff import requires_grad, autodiff, backward, grad
-import microfacet
-from camera import generate_ray
+from .microfacet import ggx_brdf
+from .camera import generate_ray
 
 @luisa.func
 def get_uv_coord(uv: float2, texture_res: int2):
@@ -59,7 +59,7 @@ def direct_collocated(ray, v_buffer, vt_buffer, vn_buffer, triangle_buffer,
     diffuse = mat.xyz
     roughness = mat.w
     specular = 0.04
-    beta = microfacet.ggx_brdf(-ray.get_dir(), -ray.get_dir(), ns, diffuse, specular, roughness)
+    beta = ggx_brdf(-ray.get_dir(), -ray.get_dir(), ns, diffuse, specular, roughness)
     intensity = float3(1.0)
     li = intensity * (1/hit.ray_t)**2
     return beta * li
@@ -96,7 +96,7 @@ def direct_collocated_backward(ray, v_buffer, vt_buffer, vn_buffer, triangle_buf
         diffuse = mat.xyz
         roughness = mat.w
         specular = 0.04
-        beta = microfacet.ggx_brdf(-ray.get_dir(), -ray.get_dir(), ns, diffuse, specular, roughness)
+        beta = ggx_brdf(-ray.get_dir(), -ray.get_dir(), ns, diffuse, specular, roughness)
         intensity = float3(1.0)
         li = intensity * (1/hit.ray_t)**2
         le = beta * li

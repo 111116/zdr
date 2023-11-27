@@ -1,6 +1,6 @@
 import luisa
 from luisa.mathtypes import *
-from camera import generate_ray
+from .camera import generate_ray
 
 @luisa.func
 def compute_dpduv(p0, p1, p2, pt0, pt1, pt2):

@@ -6,17 +6,13 @@ Currently only supports collocated direct lighting.
 import torch
 import luisa
 from luisa.mathtypes import *
-import numpy as np
-from PIL import Image
 import weakref
-import gc
-from time import time
-import random
+# import gc
 
-from load_obj import read_obj, concat_triangles
-from recompute_normal import recompute_normal
-from uvgrad import render_uvgrad_kernel
-from integrator import render_kernel, render_backward_kernel
+from .load_obj import read_obj, concat_triangles
+from .recompute_normal import recompute_normal
+from .uvgrad import render_uvgrad_kernel
+from .integrator import render_kernel, render_backward_kernel
 
 # Using CUDA for interaction with PyTorch
 luisa.init('cuda')
@@ -146,41 +142,3 @@ class Scene:
 
         """
         return Scene.RenderOperator.apply(material, self, res, spp, seed)
-
-
-
-# Example Usage
-if __name__ == "__main__":
-    from tqdm import tqdm
-    import imageio
-    def load_material(diffuse_file, roughness_file):
-        from torchvision.transforms import ToTensor
-        diffuse_img = ToTensor()(Image.open(diffuse_file)).cuda()
-        roughness_img = ToTensor()(Image.open(roughness_file)).cuda()
-        assert roughness_img.shape[0] == 1
-        mat = torch.vstack((diffuse_img, roughness_img)).permute((1,2,0))**2.2
-        return mat.contiguous()
-    obj_file = 'assets/sphere.obj'
-    scene = Scene(obj_file, use_face_normal=True)
-    diffuse_file = 'assets/wood_olive/wood_olive_wood_olive_basecolor.png'
-    roughness_file = 'assets/wood_olive/wood_olive_wood_olive_roughness.png'
-    material_GT = load_material(diffuse_file, roughness_file)
-    I_GT = sum(scene.render(material_GT, res=(1024,1024), spp=1, seed=random.randint(0, 2147483647)) for _ in range(100))/100
-    # scene.render_kernel = render_uvgrad_kernel
-
-    # Optimize using gradient descent
-    material = torch.rand((1024,1024,4), device='cuda')
-    material.requires_grad_()
-    optimizer = torch.optim.Adam([material], lr=0.01)
-    for it in tqdm(range(2000)):
-        optimizer.zero_grad()
-        I = scene.render(material, res=(1024,1024), spp=1, seed=random.randint(0, 2147483647))
-        ((I-I_GT)**2).sum().backward()
-        optimizer.step()
-        material.data.clamp_(min=0, max=1)
-
-    Image.fromarray((I_GT[...,0:3].clamp(min=0,max=1)**0.454*255).to(torch.uint8).cpu().numpy()).save('results/gt.png')
-    Image.fromarray((I[...,0:3].clamp(min=0,max=1)**0.454*255).to(torch.uint8).cpu().numpy()).save('results/a.png')
-    Image.fromarray((material[...,0:3].clamp(min=0, max=1)**0.454*255).detach().cpu().numpy().astype("uint8")).save("results/d.png")
-    Image.fromarray((material[...,3].clamp(min=0, max=1)**0.454*255).detach().cpu().numpy().astype("uint8")).save("results/dr.png")
-    print("DIFF", ((I-I_GT)**2).sum())
