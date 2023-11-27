@@ -120,10 +120,8 @@ class Scene:
         def backward(ctx, grad_output):
             # print("a", len(gc.get_referrers(grad_output)))
             material, = ctx.saved_tensors
-            if material.grad is None:
-                # Can't use empty_like here because d_material have to be contiguous
-                material.grad = torch.zeros(material.size(), dtype=material.dtype, device=material.device)
-            return ctx.scene().render_backward(grad_output, material.grad, material.detach(), *ctx.args)
+            mat_grad = torch.zeros(material.size(), dtype=material.dtype, device=material.device)
+            return ctx.scene().render_backward(grad_output, mat_grad, material.detach(), *ctx.args)
 
     def render(self, material, *, res, spp, seed=0):
         """Renders the scene with the given material and rendering parameters.
