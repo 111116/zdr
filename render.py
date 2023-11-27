@@ -11,6 +11,7 @@ from PIL import Image
 import weakref
 import gc
 from time import time
+import random
 
 from load_obj import read_obj, concat_triangles
 from recompute_normal import recompute_normal
@@ -80,6 +81,7 @@ class Scene:
         material_buffer = luisa.Buffer.from_dlpack(material.detach().flatten())
         image = torch.empty((res[1], res[0], 4), dtype=torch.float32, device='cuda')
         image_buffer = luisa.Buffer.from_dlpack(image.reshape((res[0]*res[1], 4)))
+        torch.cuda.synchronize() # make sure material is ready
         self.render_kernel(image_buffer,
             self.v_buffer, self.vt_buffer, self.vn_buffer, self.triangle_buffer,
             self.accel, material_buffer, int2(*texture_res), self.camera,
@@ -88,7 +90,6 @@ class Scene:
         return image
     
     def render_backward(self, grad_output, d_material, material, res, spp, seed):
-        torch.cuda.synchronize() # grad_output may not be ready
         assert material.ndim == 3 and material.shape[2] == 4
         texture_res = material.shape[0:2]
         material_buffer = luisa.Buffer.from_dlpack(material.flatten())
@@ -102,6 +103,7 @@ class Scene:
         #     print("- ", namestr(referrer, globals()), namestr(referrer, locals()))
 
         # print("REF", len(gc.get_referrers(grad_output)), len(gc.get_referrers(d_image)))
+        torch.cuda.synchronize() # make sure grad_output is ready
         render_backward_kernel(d_image,
             self.v_buffer, self.vt_buffer, self.vn_buffer, self.triangle_buffer, self.accel,
             d_material_buffer, material_buffer, int2(*texture_res), self.camera,
@@ -163,7 +165,7 @@ if __name__ == "__main__":
     diffuse_file = 'assets/wood_olive/wood_olive_wood_olive_basecolor.png'
     roughness_file = 'assets/wood_olive/wood_olive_wood_olive_roughness.png'
     material_GT = load_material(diffuse_file, roughness_file)
-    I_GT = scene.render(material_GT, res=(1024,1024), spp=1, seed=0)
+    I_GT = sum(scene.render(material_GT, res=(1024,1024), spp=1, seed=random.randint(0, 2147483647)) for _ in range(100))/100
     # scene.render_kernel = render_uvgrad_kernel
 
     # Optimize using gradient descent
@@ -172,7 +174,7 @@ if __name__ == "__main__":
     optimizer = torch.optim.Adam([material], lr=0.01)
     for it in tqdm(range(2000)):
         optimizer.zero_grad()
-        I = scene.render(material, res=(1024,1024), spp=1, seed=0)
+        I = scene.render(material, res=(1024,1024), spp=1, seed=random.randint(0, 2147483647))
         ((I-I_GT)**2).sum().backward()
         optimizer.step()
         material.data.clamp_(min=0, max=1)
