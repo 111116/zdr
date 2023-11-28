@@ -55,7 +55,7 @@ def write_bsdf_grad(uv: float2, dmat, d_material_buffer, texture_res):
         k11 = off.x * off.y
         write_single_bsdf_grad(ip + int2(0,0), k00 * dmat, d_material_buffer, texture_res)
         write_single_bsdf_grad(ip + int2(0,1), k01 * dmat, d_material_buffer, texture_res)
-        write_single_bsdf_grad(ip + int2(1,1), k11 * dmat, d_material_buffer, texture_res)
+        write_single_bsdf_grad(ip + int2(1,0), k10 * dmat, d_material_buffer, texture_res)
         write_single_bsdf_grad(ip + int2(1,1), k11 * dmat, d_material_buffer, texture_res)
 
 @luisa.func
