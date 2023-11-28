@@ -23,8 +23,14 @@ diffuse_file = 'assets/wood_olive/wood_olive_wood_olive_basecolor.png'
 roughness_file = 'assets/wood_olive/wood_olive_wood_olive_roughness.png'
 material_GT = load_material(diffuse_file, roughness_file)
 I_GT = scene.render(material_GT, res=(1024,1024), spp=64, seed=random.randint(0, 2147483647))
+Image.fromarray((I_GT[...,0:3].clamp(min=0,max=1)**0.454*255).to(torch.uint8).cpu().numpy()).save('results/gt.png')
+
+quit()
 
 # scene.render_kernel = render_uvgrad_kernel
+
+
+# ======== Optimization using differentiable rendering ========
 
 # Optimize using gradient descent
 material = torch.rand((1024,1024,4), device='cuda')
@@ -37,7 +43,6 @@ for it in tqdm(range(1000)):
     optimizer.step()
     material.data.clamp_(min=0, max=1)
 
-Image.fromarray((I_GT[...,0:3].clamp(min=0,max=1)**0.454*255).to(torch.uint8).cpu().numpy()).save('results/gt.png')
 Image.fromarray((I[...,0:3].clamp(min=0,max=1)**0.454*255).to(torch.uint8).cpu().numpy()).save('results/a.png')
 Image.fromarray((material[...,0:3].clamp(min=0, max=1)**0.454*255).detach().cpu().numpy().astype("uint8")).save("results/d.png")
 Image.fromarray((material[...,3].clamp(min=0, max=1)**0.454*255).detach().cpu().numpy().astype("uint8")).save("results/dr.png")

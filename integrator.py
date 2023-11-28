@@ -2,7 +2,7 @@ import luisa
 from luisa.mathtypes import *
 from luisa.autodiff import requires_grad, autodiff, backward, grad
 from .microfacet import ggx_brdf
-from .camera import generate_ray
+from .camera import generate_ray, tent_warp
 
 @luisa.func
 def get_uv_coord(uv: float2, texture_res: int2):
@@ -107,13 +107,16 @@ def direct_collocated_backward(ray, v_buffer, vt_buffer, vn_buffer, triangle_buf
 
 @luisa.func
 def render_kernel(image, v_buffer, vt_buffer, vn_buffer, triangle_buffer, accel, 
-                  material_buffer, texture_res, camera, spp, seed):
+                  material_buffer, texture_res, camera, spp, seed, use_tent_filter):
     resolution = dispatch_size().xy
     coord = dispatch_id().xy
     s = float3(0.0)
     for it in range(spp):
         sampler = luisa.util.make_random_sampler3d(int3(int2(coord), seed^(it*5087)))
-        pixel = 2.0 / resolution * (float2(coord) + sampler.next2f()) - 1.0
+        pixel_offset = sampler.next2f()
+        if use_tent_filter:
+            pixel_offset = tent_warp(pixel_offset, 1.0) + float2(0.5)
+        pixel = 2.0 / resolution * (float2(coord) + pixel_offset) - 1.0
         ray = generate_ray(camera, pixel)
         radiance = direct_collocated(ray, v_buffer, vt_buffer, vn_buffer, triangle_buffer,
                                     accel, material_buffer, texture_res)
@@ -123,7 +126,7 @@ def render_kernel(image, v_buffer, vt_buffer, vn_buffer, triangle_buffer, accel,
 
 @luisa.func
 def render_backward_kernel(d_image, v_buffer, vt_buffer, vn_buffer, triangle_buffer, accel, 
-                    d_material_buffer, material_buffer, texture_res, camera, spp, seed):
+                    d_material_buffer, material_buffer, texture_res, camera, spp, seed, use_tent_filter):
     resolution = dispatch_size().xy
     coord = dispatch_id().xy
     le_grad = d_image.read(coord.x + coord.y * resolution.x).xyz / spp
@@ -131,7 +134,10 @@ def render_backward_kernel(d_image, v_buffer, vt_buffer, vn_buffer, triangle_buf
         le_grad = float3(0.0)
     for it in range(spp):
         sampler = luisa.util.make_random_sampler3d(int3(int2(coord), seed^(it*5087)))
-        pixel = 2.0 / resolution * (float2(coord) + sampler.next2f()) - 1.0
+        pixel_offset = sampler.next2f()
+        if use_tent_filter:
+            pixel_offset = tent_warp(pixel_offset, 1.0) + float2(0.5)
+        pixel = 2.0 / resolution * (float2(coord) + pixel_offset) - 1.0
         ray = generate_ray(camera, pixel)
         direct_collocated_backward(ray, v_buffer, vt_buffer, vn_buffer, triangle_buffer, accel,
                                    d_material_buffer, material_buffer, texture_res, le_grad)

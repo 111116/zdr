@@ -70,6 +70,7 @@ class Scene:
             up = float3(0.0, 1.0, 0.0)
         )
         self.render_kernel = render_kernel
+        self.use_tent_filter = True
 
     def render_forward(self, material, res, spp, seed):
         assert material.ndim == 3 and material.shape[2] == 4
@@ -81,7 +82,7 @@ class Scene:
         self.render_kernel(image_buffer,
             self.v_buffer, self.vt_buffer, self.vn_buffer, self.triangle_buffer,
             self.accel, material_buffer, int2(*texture_res), self.camera,
-            spp, seed, dispatch_size=res)
+            spp, seed, self.use_tent_filter, dispatch_size=res)
         luisa.synchronize()
         return image
     
@@ -103,7 +104,7 @@ class Scene:
         render_backward_kernel(d_image,
             self.v_buffer, self.vt_buffer, self.vn_buffer, self.triangle_buffer, self.accel,
             d_material_buffer, material_buffer, int2(*texture_res), self.camera,
-            spp, seed+1, dispatch_size=res)
+            spp, seed+1, self.use_tent_filter, dispatch_size=res)
         # print("REF", len(gc.get_referrers(grad_output)), len(gc.get_referrers(d_image)))
         luisa.synchronize()
         return d_material, None, None, None, None
