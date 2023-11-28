@@ -1,6 +1,6 @@
 # zdr
 
-Simple raytracing differentiable renderer. Outputs/parameters are pytorch tensors.
+Simple raytracing differentiable renderer (w.r.t. material parameters). Images and parameters are both PyTorch tensors.
 
 Currently only supports collocated direct lighting (point light at position of the camera).
 
@@ -13,3 +13,4 @@ todo
 ## Usage
 
 todo
+see `example.py`

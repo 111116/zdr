@@ -24,6 +24,12 @@ roughness_file = 'assets/wood_olive/wood_olive_wood_olive_roughness.png'
 material_GT = load_material(diffuse_file, roughness_file)
 I_GT = scene.render(material_GT, res=(1024,1024), spp=128) # seed defaults to 0
 Image.fromarray((I_GT[...,0:3].clamp(min=0,max=1)**0.454*255).to(torch.uint8).cpu().numpy()).save('results/gt.png')
+duvdxy = scene.render_duvdxy(material_GT, res=(1024,1024), spp=128) # seed defaults to 0
+Image.fromarray(((duvdxy[...,0:3]*1000+0.5).clamp(min=0,max=1)**0.454*255).to(torch.uint8).cpu().numpy()).save('results/duvdx_dudy.png')
+pixel_independency = torch.det(duvdxy.reshape(1024,1024,2,2)*1024).abs()
+Image.fromarray((pixel_independency.clamp(min=0,max=1)**0.454*255).to(torch.uint8).cpu().numpy()).save('results/pixel_independency.png')
+pixel_independency1 = sum(torch.det(scene.render_duvdxy(material_GT, res=(1024,1024), spp=1, seed=random.randint(0, 2147483647)).reshape(1024,1024,2,2)*1024).abs() for _ in range(128))/128
+Image.fromarray((pixel_independency1.clamp(min=0,max=1)**0.454*255).to(torch.uint8).cpu().numpy()).save('results/pixel_independency1.png')
 
 # scene.render_kernel = render_uvgrad_kernel
 

@@ -69,24 +69,23 @@ class Scene:
             target = float3(0.0, 0.0, 0.0),
             up = float3(0.0, 1.0, 0.0)
         )
-        self.render_kernel = render_kernel
         self.use_tent_filter = True
 
-    def render_forward(self, material, res, spp, seed):
+    def render_forward(self, material, res, spp, seed, integrator_kernel=render_kernel):
         assert material.ndim == 3 and material.shape[2] == 4
         texture_res = material.shape[0:2]
         material_buffer = luisa.Buffer.from_dlpack(material.detach().flatten())
         image = torch.empty((res[1], res[0], 4), dtype=torch.float32, device='cuda')
         image_buffer = luisa.Buffer.from_dlpack(image.reshape((res[0]*res[1], 4)))
         torch.cuda.synchronize() # make sure material is ready
-        self.render_kernel(image_buffer,
+        integrator_kernel(image_buffer,
             self.v_buffer, self.vt_buffer, self.vn_buffer, self.triangle_buffer,
             self.accel, material_buffer, int2(*texture_res), self.camera,
             spp, seed, self.use_tent_filter, dispatch_size=res)
         luisa.synchronize()
         return image
     
-    def render_backward(self, grad_output, d_material, material, res, spp, seed):
+    def render_backward(self, grad_output, d_material, material, res, spp, seed, integrator_kernel=render_backward_kernel):
         assert material.ndim == 3 and material.shape[2] == 4
         texture_res = material.shape[0:2]
         material_buffer = luisa.Buffer.from_dlpack(material.flatten())
@@ -101,7 +100,7 @@ class Scene:
 
         # print("REF", len(gc.get_referrers(grad_output)), len(gc.get_referrers(d_image)))
         torch.cuda.synchronize() # make sure grad_output is ready
-        render_backward_kernel(d_image,
+        integrator_kernel(d_image,
             self.v_buffer, self.vt_buffer, self.vn_buffer, self.triangle_buffer, self.accel,
             d_material_buffer, material_buffer, int2(*texture_res), self.camera,
             spp, seed+1, self.use_tent_filter, dispatch_size=res)
@@ -141,3 +140,19 @@ class Scene:
 
         """
         return Scene.RenderOperator.apply(material, self, res, spp, seed)
+
+    def render_duvdxy(self, material, *, res, spp, seed=0):
+        """Computes gradient texture coord w.r.t. screen-space coords
+
+        Args:
+            material (torch.Tensor): A tensor of shape (wu,hu,c) # TODO
+            res (tuple): Resolution of the rendered image as a tuple (width, height).
+            spp (int): Samples per pixel for rendering. Higher values increase quality at the
+                       cost of more computation.
+            seed (int): Seed for random number in rendering.
+
+        Returns:
+            torch.Tensor: A tensor (height, width, 4) storing (dudx,dvdx,dudy,dvdy) in each channel
+
+        """
+        return self.render_forward(material.detach(), res, spp, seed, integrator_kernel=render_uvgrad_kernel)

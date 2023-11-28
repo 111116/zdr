@@ -1,6 +1,6 @@
 import luisa
 from luisa.mathtypes import *
-from .camera import generate_ray
+from .camera import generate_ray, tent_warp
 
 @luisa.func
 def compute_dpduv(p0, p1, p2, pt0, pt1, pt2):
@@ -13,7 +13,6 @@ def compute_dpduv(p0, p1, p2, pt0, pt1, pt2):
     dpduv = dpde * float3x3(deduv)
     dpduv[1] *= -1 # inverted v
     return dpduv # [dpdu dpdv 0]
-
 
 @luisa.func
 def trace_duvdxy(ray, ray_dx, ray_dy, v_buffer, vt_buffer, triangle_buffer, accel):
@@ -69,21 +68,25 @@ def trace_duvdxy(ray, ray_dx, ray_dy, v_buffer, vt_buffer, triangle_buffer, acce
     # --------- ----------------------- ---------
 
 
-
 @luisa.func
 def render_uvgrad_kernel(image, v_buffer, vt_buffer, vn_buffer, triangle_buffer, accel, 
-                         material_buffer, texture_res, camera, spp, seed):
+                         material_buffer, texture_res, camera, spp, seed, use_tent_filter):
     resolution = dispatch_size().xy
     coord = dispatch_id().xy
-    # TODO spp
-    sampler = luisa.util.make_random_sampler3d(int3(int2(coord), seed))
-    u = sampler.next2f()
-    pixel = 2.0 / resolution * (float2(coord) + u) - 1.0
-    pixel_dx = 2.0 / resolution * (float2(coord) + u + float2(1, 0)) - 1.0
-    pixel_dy = 2.0 / resolution * (float2(coord) + u + float2(0, 1)) - 1.0
-    ray = generate_ray(camera, pixel)
-    ray_dx = generate_ray(camera, pixel_dx)
-    ray_dy = generate_ray(camera, pixel_dy)
-    uvgrad = trace_duvdxy(ray, ray_dx, ray_dy, v_buffer, vt_buffer,
-                          triangle_buffer, accel)
-    image.write(coord, uvgrad)
+    s = float4(0.0)
+    for it in range(spp):
+        sampler = luisa.util.make_random_sampler3d(int3(int2(coord), seed^(it*5087)))
+        pixel_offset = sampler.next2f()
+        if use_tent_filter:
+            pixel_offset = tent_warp(pixel_offset, 1.0) + float2(0.5)
+        pixel = 2.0 / resolution * (float2(coord) + pixel_offset) - 1.0
+        pixel_dx = 2.0 / resolution * (float2(coord) + pixel_offset + float2(1, 0)) - 1.0
+        pixel_dy = 2.0 / resolution * (float2(coord) + pixel_offset + float2(0, 1)) - 1.0
+        ray = generate_ray(camera, pixel)
+        ray_dx = generate_ray(camera, pixel_dx)
+        ray_dy = generate_ray(camera, pixel_dy)
+        uvgrad = trace_duvdxy(ray, ray_dx, ray_dy, v_buffer, vt_buffer,
+                            triangle_buffer, accel)
+        if not any(isnan(uvgrad)):
+            s += uvgrad
+    image.write(coord.x + coord.y * resolution.x, s/spp)
