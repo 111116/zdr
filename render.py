@@ -116,15 +116,22 @@ class Scene:
             ctx.save_for_backward(material)
             ctx.scene = weakref.ref(self)
             ctx.args = args
+            ctx.camera = self.camera
             return self.render_forward(material.detach(), *args)
-        
+
         @staticmethod
         def backward(ctx, grad_output):
             # print("a", len(gc.get_referrers(grad_output)))
+            # scene.camera may be modified between forward and backward.
+            # workaround: save and load camera state
+            camera_bak = ctx.scene().camera
+            ctx.scene().camera = ctx.camera
             material, = ctx.saved_tensors
             mat_grad = torch.zeros(material.size(), dtype=material.dtype, device=material.device)
-            return ctx.scene().render_backward(grad_output, mat_grad, material.detach(), *ctx.args)
-
+            grads = ctx.scene().render_backward(grad_output, mat_grad, material.detach(), *ctx.args)
+            ctx.scene().camera = camera_bak
+            return grads
+            
     def render(self, material, *, res, spp, seed=0):
         """Renders the scene with the given material and rendering parameters.
 
