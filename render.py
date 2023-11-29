@@ -37,12 +37,14 @@ class Scene:
 
     Attributes:
         camera (struct): Camera settings including FOV, origin, target, and up vector.
+                         Do NOT change order of fields!
             fov (float): The field of view of the camera in radians
             origin (float3): The position of the camera in the 3D world space.
             target (float3): The point in the 3D space that the camera is looking at.
             up (float3): The up vector of the camera, typically (0,1,0).
 
-        render_kernel (function): Kernel function for rendering.
+        use_tent_filter (bool): Will use tent reconstruction filter if True (default);
+                                Box filter if set to False.
 
     Args:
         obj_file (str): Path to the OBJ file containing the 3D model geometry.
