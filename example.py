@@ -28,7 +28,11 @@ duvdxy = scene.render_duvdxy(material_GT, res=(1024,1024), spp=128) # seed defau
 Image.fromarray(((duvdxy[...,0:3]*1000+0.5).clamp(min=0,max=1)**0.454*255).to(torch.uint8).cpu().numpy()).save('results/duvdx_dudy.png')
 pixel_independency = torch.det(duvdxy.reshape(1024,1024,2,2)*1024).abs()
 Image.fromarray((pixel_independency.clamp(min=0,max=1)**0.454*255).to(torch.uint8).cpu().numpy()).save('results/pixel_independency.png')
-pixel_independency1 = sum(torch.det(scene.render_duvdxy(material_GT, res=(1024,1024), spp=1, seed=random.randint(0, 2147483647)).reshape(1024,1024,2,2)*1024).abs() for _ in range(128))/128
+pixel_independency1 = sum(torch.det(scene.render_duvdxy(material_GT,
+                                                        res=(1024,1024),
+                                                        spp=1,
+                                                        seed=random.randint(0, 2147483647)
+                                                        ).reshape(1024,1024,2,2)*1024).abs() for _ in range(128))/128
 Image.fromarray((pixel_independency1.clamp(min=0,max=1)**0.454*255).to(torch.uint8).cpu().numpy()).save('results/pixel_independency1.png')
 
 # scene.render_kernel = render_uvgrad_kernel
@@ -42,7 +46,7 @@ material.requires_grad_()
 optimizer = torch.optim.Adam([material], lr=0.01)
 for it in tqdm(range(1000)):
     optimizer.zero_grad()
-    I = scene.render(material, res=(1024,1024), spp=1, seed=random.randint(0, 2147483647))
+    I = scene.render(material, res=(1024,1024), spp=4, seed=random.randint(0, 2147483647))
     ((I-I_GT)**2).sum().backward()
     optimizer.step()
     material.data.clamp_(min=1e-3, max=1)

@@ -8,6 +8,8 @@ bilinear = True
 
 @luisa.func
 def read_single_bsdf(coord: int2, material_buffer, texture_res):
+    # Address mode: CLAMP
+    coord = clamp(coord, int2(0), texture_res-1)
     idx = coord.x + texture_res.x * coord.y
     return float4(
         material_buffer.read(idx * 4 + 0),
