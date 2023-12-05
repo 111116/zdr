@@ -35,6 +35,8 @@ def read_bsdf(uv: float2, material_buffer, texture_res):
 
 @luisa.func
 def write_single_bsdf_grad(coord: int2, dmat, d_material_buffer, texture_res):
+    # Address mode: CLAMP
+    coord = clamp(coord, int2(0), texture_res-1)
     idx = coord.x + texture_res.x * coord.y
     _ = d_material_buffer.atomic_fetch_add(idx * 4 + 0, dmat.x)
     _ = d_material_buffer.atomic_fetch_add(idx * 4 + 1, dmat.y)
