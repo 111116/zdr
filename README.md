@@ -6,7 +6,7 @@ Currently only supports single object, collocated direct lighting (point light a
 
 ## Dependency
 
-[LuisaCompute](https://github.com/LuisaGroup/LuisaCompute), which requires C++20 and Nvidia driver R535+.
+[LuisaCompute](https://github.com/LuisaGroup/LuisaCompute), which requires C++20, Python>=3.10 and Nvidia driver R535+.
 
 ## Usage
 
