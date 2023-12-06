@@ -12,7 +12,7 @@ import weakref
 from .load_obj import read_obj, concat_triangles
 from .recompute_normal import recompute_normal
 from .uvgrad import render_uvgrad_kernel
-from .integrator import render_kernel, render_backward_kernel
+from .collocated import render_collocated_kernel, render_collocated_backward_kernel
 
 # Using CUDA for interaction with PyTorch
 luisa.init('cuda')
@@ -72,22 +72,26 @@ class Scene:
             up = float3(0.0, 1.0, 0.0)
         )
         self.use_tent_filter = True
+        self.forward_kernel = render_collocated_kernel
+        self.backward_kernel = render_collocated_backward_kernel
 
-    def render_forward(self, material, res, spp, seed, integrator_kernel=render_kernel):
+    def render_forward(self, material, res, spp, seed, kernel=None):
         assert material.ndim == 3 and material.shape[2] == 4
         texture_res = material.shape[0:2]
         material_buffer = luisa.Buffer.from_dlpack(material.detach().flatten())
         image = torch.empty((res[1], res[0], 4), dtype=torch.float32, device='cuda')
         image_buffer = luisa.Buffer.from_dlpack(image.reshape((res[0]*res[1], 4)))
         torch.cuda.synchronize() # make sure material is ready
-        integrator_kernel(image_buffer,
+        if kernel is None:
+            kernel = self.forward_kernel
+        kernel(image_buffer,
             self.v_buffer, self.vt_buffer, self.vn_buffer, self.triangle_buffer,
             self.accel, material_buffer, int2(*texture_res), self.camera,
             spp, seed, self.use_tent_filter, dispatch_size=res)
         luisa.synchronize()
         return image
     
-    def render_backward(self, grad_output, d_material, material, res, spp, seed, integrator_kernel=render_backward_kernel):
+    def render_backward(self, grad_output, d_material, material, res, spp, seed, kernel=None):
         assert material.ndim == 3 and material.shape[2] == 4
         texture_res = material.shape[0:2]
         material_buffer = luisa.Buffer.from_dlpack(material.flatten())
@@ -102,7 +106,9 @@ class Scene:
 
         # print("REF", len(gc.get_referrers(grad_output)), len(gc.get_referrers(d_image)))
         torch.cuda.synchronize() # make sure grad_output is ready
-        integrator_kernel(d_image,
+        if kernel is None:
+            kernel = self.backward_kernel
+        kernel(d_image,
             self.v_buffer, self.vt_buffer, self.vn_buffer, self.triangle_buffer, self.accel,
             d_material_buffer, material_buffer, int2(*texture_res), self.camera,
             spp, seed+1, self.use_tent_filter, dispatch_size=res)
@@ -164,4 +170,4 @@ class Scene:
             torch.Tensor: A tensor (height, width, 4) storing (dudx,dvdx,dudy,dvdy) in each channel
 
         """
-        return self.render_forward(material.detach(), res, spp, seed, integrator_kernel=render_uvgrad_kernel)
+        return self.render_forward(material.detach(), res, spp, seed, kernel=render_uvgrad_kernel)
