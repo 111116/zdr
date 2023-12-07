@@ -13,6 +13,7 @@ from .load_obj import read_obj, concat_triangles
 from .recompute_normal import recompute_normal
 from .uvgrad import render_uvgrad_kernel
 from .collocated import render_collocated_kernel, render_collocated_backward_kernel
+from .direct import render_direct_kernel, render_direct_backward_kernel
 
 # Using CUDA for interaction with PyTorch
 luisa.init('cuda')
@@ -72,8 +73,8 @@ class Scene:
             up = float3(0.0, 1.0, 0.0)
         )
         self.use_tent_filter = True
-        self.forward_kernel = render_collocated_kernel
-        self.backward_kernel = render_collocated_backward_kernel
+        self.forward_kernel = render_direct_kernel
+        self.backward_kernel = render_direct_backward_kernel
 
     def render_forward(self, material, res, spp, seed, kernel=None):
         assert material.ndim == 3 and material.shape[2] == 4

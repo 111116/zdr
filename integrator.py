@@ -75,7 +75,7 @@ def derive_render_kernel(integrator_func):
                 pixel_offset = tent_warp(pixel_offset, 1.0) + float2(0.5)
             pixel = 2.0 / resolution * (float2(coord) + pixel_offset) - 1.0
             ray = generate_ray(camera, pixel)
-            radiance = integrator_func(ray, v_buffer, vt_buffer, vn_buffer, triangle_buffer, accel,
+            radiance = integrator_func(ray, sampler, v_buffer, vt_buffer, vn_buffer, triangle_buffer, accel,
                                        material_buffer, texture_res)
             if not any(isnan(radiance)):
                 s += radiance
@@ -98,6 +98,6 @@ def derive_render_backward_kernel(integrator_backward_func):
                 pixel_offset = tent_warp(pixel_offset, 1.0) + float2(0.5)
             pixel = 2.0 / resolution * (float2(coord) + pixel_offset) - 1.0
             ray = generate_ray(camera, pixel)
-            integrator_backward_func(ray, v_buffer, vt_buffer, vn_buffer, triangle_buffer, accel,
+            integrator_backward_func(ray, sampler, v_buffer, vt_buffer, vn_buffer, triangle_buffer, accel,
                                      d_material_buffer, material_buffer, texture_res, le_grad)
     return _kernel
