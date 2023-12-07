@@ -94,19 +94,24 @@ def direct_estimator_backward(ray, sampler, v_buffer, vt_buffer, vn_buffer, tria
     ng = normalize(cross(p1 - p0, p2 - p0))
     if dot(-ray.get_dir(), ng) < 1e-4 or dot(-ray.get_dir(), ns) < 1e-4:
         return
-    # return float3(uv, 0.5)
-    mat = read_bsdf(uv, material_buffer, texture_res)
-    with autodiff():
-        requires_grad(mat)
-        diffuse = mat.xyz
-        roughness = mat.w
-        specular = 0.04
-        beta = ggx_brdf(-ray.get_dir(), -ray.get_dir(), ns, diffuse, specular, roughness)
-        intensity = float3(1.0)
-        li = intensity * (1/hit.ray_t)**2
-        le = beta * li
-        backward(le, le_grad)
-        mat_grad = grad(mat)
+
+    light = sample_light(p, sampler) # (wi, dist, pdf, eval)
+    shadow_ray = luisa.make_ray(p, light.wi, 1e-4, light.dist)
+    occluded = accel.trace_any(shadow_ray, -1)
+    cos_wi_light = dot(light.wi, ns)
+    if not occluded:
+        mat = read_bsdf(uv, material_buffer, texture_res)
+        with autodiff():
+            requires_grad(mat)
+            diffuse = mat.xyz
+            roughness = mat.w
+            specular = 0.04
+            bsdf = ggx_brdf(-ray.get_dir(), -ray.get_dir(), ns, diffuse, specular, roughness)
+            # mis_weight = balanced_heuristic(light.pdf, pdf_bsdf)
+            mis_weight = 1.0
+            le = bsdf * cos_wi_light * mis_weight * light.eval / max(light.pdf, 1e-4)
+            backward(le, le_grad)
+            mat_grad = grad(mat)
     write_bsdf_grad(uv, mat_grad, d_material_buffer, texture_res)
 
 render_direct_kernel = derive_render_kernel(direct_estimator)

@@ -17,7 +17,7 @@ def load_material(diffuse_file, roughness_file):
     mat = torch.vstack((diffuse_img, roughness_img)).permute((1,2,0))**2.2
     return mat.contiguous()
 
-obj_file = 'assets/the-valentini-torso_high.obj'
+obj_file = 'assets/the-valentini-torso_bronze.obj'
 scene = Scene(obj_file, use_face_normal=True)
 scene.camera = luisa.struct(
     fov = 50 / 180 * 3.1415926,
@@ -37,7 +37,6 @@ Image.fromarray((I_GT[...,0:3].clamp(min=0,max=1)**0.454*255).to(torch.uint8).cp
 duvdxy = scene.render_duvdxy(material_GT, res=ImgRes, spp=128) # seed defaults to 0
 Image.fromarray(((duvdxy[...,0:3]*1000+0.5).clamp(min=0,max=1)**0.454*255).to(torch.uint8).cpu().numpy()).save('results/duvdx_dudy.png')
 
-quit()
 # ======== Optimization using differentiable rendering ========
 # Note that this is just an example, where scene.camera remains unchanged.
 
