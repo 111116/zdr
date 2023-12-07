@@ -63,9 +63,8 @@ def read_obj(file_path):
 def concat_triangles(faces):
     tris = []
     for f in faces:
-        if len(f) != 3:
-            raise Exception('Non-triangle face detected')
-        tris += f
+        for i in range(2, len(f)):
+            tris += [f[0], f[i-1], f[i]]
     return tris
 
 # Example usage:
