@@ -17,12 +17,19 @@ def load_material(diffuse_file, roughness_file):
     mat = torch.vstack((diffuse_img, roughness_img)).permute((1,2,0))**2.2
     return mat.contiguous()
 
-obj_file = 'assets/the-valentini-torso_bronze.obj'
-scene = Scene(obj_file, use_face_normal=True)
+obj_file = 'assets/cbox-combined.obj'
+obj_file = 'assets/sphere.obj'
+scene = Scene([(obj_file,)])
 scene.camera = luisa.struct(
     fov = 50 / 180 * 3.1415926,
-    origin = luisa.float3(5.0, 3.0, 4.0),
-    target = luisa.float3(0.0, 2.0, 0.0),
+    origin = luisa.float3(-0.2, 2.5, 6.0),
+    target = luisa.float3(-0.2, 2.5, -2.5),
+    up = luisa.float3(0.0, 1.0, 0.0)
+)
+scene.camera = luisa.struct(
+    fov = 50 / 180 * 3.1415926,
+    origin = luisa.float3(1.0, 0.0, 0.0),
+    target = luisa.float3(0.0, 0.0, 0.0),
     up = luisa.float3(0.0, 1.0, 0.0)
 )
 diffuse_file = 'assets/wood_olive/wood_olive_wood_olive_basecolor.png'
@@ -34,8 +41,8 @@ I_GT = scene.render(material_GT, res=ImgRes, spp=128) # seed defaults to 0
 Image.fromarray((I_GT[...,0:3].clamp(min=0,max=1)**0.454*255).to(torch.uint8).cpu().numpy()).save('results/gt.png')
 
 # duv/dxy (screen space to texture space jacobian)
-duvdxy = scene.render_duvdxy(material_GT, res=ImgRes, spp=128) # seed defaults to 0
-Image.fromarray(((duvdxy[...,0:3]*1000+0.5).clamp(min=0,max=1)**0.454*255).to(torch.uint8).cpu().numpy()).save('results/duvdx_dudy.png')
+# duvdxy = scene.render_duvdxy(material_GT, res=ImgRes, spp=128) # seed defaults to 0
+# Image.fromarray(((duvdxy[...,0:3]*1000+0.5).clamp(min=0,max=1)**0.454*255).to(torch.uint8).cpu().numpy()).save('results/duvdx_dudy.png')
 
 # ======== Optimization using differentiable rendering ========
 # Note that this is just an example, where scene.camera remains unchanged.

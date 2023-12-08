@@ -4,28 +4,24 @@ Currently only supports collocated direct lighting.
 
 """
 import torch
+import numpy
+import math
 import luisa
 from luisa.mathtypes import *
 import weakref
+
 # import gc
 
 from .load_obj import read_obj, concat_triangles
 from .recompute_normal import recompute_normal
 from .uvgrad import render_uvgrad_kernel
 from .collocated import render_collocated_kernel, render_collocated_backward_kernel
-from .direct import render_direct_kernel, render_direct_backward_kernel
+# from .direct import render_direct_kernel, render_direct_backward_kernel
+from .vertex import Vertex
 
 # Using CUDA for interaction with PyTorch
 luisa.init('cuda')
 
-
-def float3list_to_padded_tensor(l):
-    a = torch.tensor(l, dtype=torch.float32, device='cuda')
-    assert a.dim()==2 and a.shape[1]==3
-    n = a.shape[0]
-    b = torch.empty((n, 1), dtype=torch.float32, device='cuda')
-    w = torch.hstack((a,b))
-    return w.as_strided(size=(n,3), stride=(4,1))
 
 class Scene:
     """A class representing a 3D scene for differentiable rendering.
@@ -49,23 +45,25 @@ class Scene:
 
     Args:
         obj_file (str): Path to the OBJ file containing the 3D model geometry.
-        use_face_normal (bool, optional): Flag to determine whether to use face normals. 
-                                          Will recompute vertex normals from faces if True.
-                                          Defaults to False.
 
     """
-    def __init__(self, obj_file, use_face_normal=False):
-        # TODO recompute normal if not availble
-        positions, tex_coords, normals, faces = read_obj(obj_file)
-        self.v_buffer = luisa.Buffer.from_dlpack(float3list_to_padded_tensor(positions))
-        self.vt_buffer = luisa.Buffer.from_dlpack(torch.tensor(tex_coords, dtype=torch.float32, device='cuda'))
-        self.vn_buffer = luisa.Buffer.from_dlpack(float3list_to_padded_tensor(normals))
-        self.triangle_buffer = luisa.buffer(concat_triangles(faces))
-        if use_face_normal:
-            recompute_normal(self.v_buffer, self.vn_buffer, self.triangle_buffer)
+    def __init__(self, models):
         self.accel = luisa.Accel()
-        self.accel.add(self.v_buffer, self.triangle_buffer)
+        self.heap = luisa.BindlessArray()
+        for idx, model in enumerate(models):
+            vertices, faces = read_obj(model[0])
+            vertex_buffer = luisa.Buffer(dtype=Vertex, size=len(vertices))
+            vertex_buffer.copy_from_array(numpy.array([(*v,*t,*n) for v,t,n in vertices], dtype=numpy.float32))
+            triangle_buffer = luisa.buffer(concat_triangles(faces))
+            if math.isnan(vertices[0][2][0]): # recompute if vertex normal isn't availble
+                print("recomputing normal...")
+                recompute_normal(vertex_buffer, triangle_buffer)
+            self.accel.add(vertex_buffer, triangle_buffer)
+            self.heap.emplace(idx*2+0, triangle_buffer)
+            self.heap.emplace(idx*2+1, vertex_buffer)
         self.accel.update()
+        self.heap.update()
+
         self.camera = luisa.struct(
             fov = 40 / 180 * 3.1415926,
             origin = float3(1.0, 0.5, 0.0),
@@ -73,8 +71,8 @@ class Scene:
             up = float3(0.0, 1.0, 0.0)
         )
         self.use_tent_filter = True
-        self.forward_kernel = render_direct_kernel
-        self.backward_kernel = render_direct_backward_kernel
+        self.forward_kernel = render_collocated_kernel
+        self.backward_kernel = render_collocated_backward_kernel
 
     def render_forward(self, material, res, spp, seed, kernel=None):
         assert material.ndim == 3 and material.shape[2] == 4
@@ -86,7 +84,7 @@ class Scene:
         if kernel is None:
             kernel = self.forward_kernel
         kernel(image_buffer,
-            self.v_buffer, self.vt_buffer, self.vn_buffer, self.triangle_buffer,
+            self.heap,
             self.accel, material_buffer, int2(*texture_res), self.camera,
             spp, seed, self.use_tent_filter, dispatch_size=res)
         luisa.synchronize()
@@ -110,7 +108,7 @@ class Scene:
         if kernel is None:
             kernel = self.backward_kernel
         kernel(d_image,
-            self.v_buffer, self.vt_buffer, self.vn_buffer, self.triangle_buffer, self.accel,
+            self.heap, self.accel,
             d_material_buffer, material_buffer, int2(*texture_res), self.camera,
             spp, seed+1, self.use_tent_filter, dispatch_size=res)
         # print("REF", len(gc.get_referrers(grad_output)), len(gc.get_referrers(d_image)))

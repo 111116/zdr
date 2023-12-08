@@ -55,10 +55,10 @@ def read_obj(file_path):
                     face.append(vertex_indices[vertex_data])
                 faces.append(face)
 
-    reindexed_positions = [x[0] for x in vertices]
-    reindexed_tex_coords = [x[1] for x in vertices]
-    reindexed_normals = [x[2] for x in vertices]
-    return reindexed_positions, reindexed_tex_coords, reindexed_normals, faces
+    # reindexed_positions = [x[0] for x in vertices]
+    # reindexed_tex_coords = [x[1] for x in vertices]
+    # reindexed_normals = [x[2] for x in vertices]
+    return vertices, faces
 
 def concat_triangles(faces):
     tris = []
