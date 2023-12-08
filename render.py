@@ -87,12 +87,13 @@ class Scene:
             triangle_buffer = luisa.buffer(triangles)
             # recompute if vertex normal isn't available
             if math.isnan(vertices[0][2][0]):
-                print("recomputing normal...")
+                print("computing vertex normal vectors from faces...")
                 recompute_normal(vertex_buffer, triangle_buffer)
             self.accel.add(vertex_buffer, triangle_buffer)
             self.heap.emplace(idx*2+0, triangle_buffer)
             self.heap.emplace(idx*2+1, vertex_buffer)
-        if idx >= 10000:
+        self.inst_count = idx + 1
+        if self.inst_count > 10000:
             raise RuntimeError('exceeding maximum number of mesh instances')
         self.light_count = len(light_insts)
         # put auxiliary buffers into bindless array
@@ -102,6 +103,20 @@ class Scene:
         self.heap.emplace(23335, luisa.buffer(inst_trig_count))
         self.accel.update()
         self.heap.update()
+    
+    def update_lights(self, emissions):
+        """Rewrite emission values of each mesh in scene
+
+        This function is primarily used for dynamically switching lights
+        on and off in a scene like a light stage.
+
+        Args:
+            emissions (list of float3): emission color of each object
+
+        """
+        assert len(emissions) == self.inst_count
+        # TODO update emission of each object in inst_metadata & rewrite light_insts
+        raise NotImplementedError()
 
     def render_forward(self, material, res, spp, seed, kernel=None):
         assert material.ndim == 3 and material.shape[2] == 4
