@@ -9,18 +9,7 @@ from .vertex import Vertex
 point_light_array = luisa.array([luisa.struct(p=float3(-0.2, 5, -3), intensity=float3(10.0))])
 # point_light_count = len(point_light_array) # TODO
 point_light_count = 0
-
-# area_light_v_buffer = luisa.buffer([
-#     float3(-0.884011,5.319334,-2.517968),
-#     float3(-0.884011,5.318497,-3.567968),
-#     float3(0.415989,5.318497,-3.567968),
-#     float3(0.415989,5.319334,-2.517968)])
-# area_light_f_buffer = luisa.buffer([1,2,3,1,3,4])
-# area_light_array = luisa.array([0,1])
-# area_light_emission = float3(1.0)
-# area_light_count = len(area_light_array)
 # env_prob = 0.3 # no environment light yet
-
 
 # make struct in kernel doesn't work now, so workaround:
 LightSampleStruct = luisa.StructType(wi=float3, dist=float, pdf=float, eval=float3)
@@ -34,11 +23,11 @@ def sample_uniform_triangle(u: float2):
     return make_float3(uv, 1.0 - uv.x - uv.y)
 
 @luisa.func
-def sample_light(origin, heap, sampler):
-    # point lights only
+def sample_light(origin, light_count, heap, sampler):
     u = sampler.next()
-    mesh_light_count = 1 # TODOs
+    mesh_light_count = light_count
     n = point_light_count + mesh_light_count
+    # TODO clean up code & put point light source from scene
     idx = clamp(int(u * n), 0, n-1)
     if idx < point_light_count:
         # sample from point light sources
@@ -91,7 +80,7 @@ def sample_light(origin, heap, sampler):
         return t
 
 @luisa.func
-def direct_estimator(ray, sampler, heap, accel, material_buffer, texture_res):
+def direct_estimator(ray, sampler, heap, accel, light_count, material_buffer, texture_res):
     hit = accel.trace_closest(ray, -1)
     if hit.miss():
         return float3(0.0)
@@ -104,7 +93,7 @@ def direct_estimator(ray, sampler, heap, accel, material_buffer, texture_res):
         return emission
 
     radiance = float3(0.0)
-    light = sample_light(it.p, heap, sampler) # (wi, dist, pdf, eval)
+    light = sample_light(it.p, light_count, heap, sampler) # (wi, dist, pdf, eval)
     shadow_ray = luisa.make_ray(it.p, light.wi, 1e-4, light.dist)
     occluded = accel.trace_any(shadow_ray, -1)
     cos_wi_light = dot(light.wi, it.ns)
@@ -121,7 +110,7 @@ def direct_estimator(ray, sampler, heap, accel, material_buffer, texture_res):
 
 
 @luisa.func
-def direct_estimator_backward(ray, sampler, heap, accel,
+def direct_estimator_backward(ray, sampler, heap, accel, light_count,
                                d_material_buffer, material_buffer, texture_res, le_grad):
     hit = accel.trace_closest(ray, -1)
     if hit.miss():
@@ -130,7 +119,7 @@ def direct_estimator_backward(ray, sampler, heap, accel,
     if dot(-ray.get_dir(), it.ng) < 1e-4 or dot(-ray.get_dir(), it.ns) < 1e-4:
         return
 
-    light = sample_light(it.p, heap, sampler) # (wi, dist, pdf, eval)
+    light = sample_light(it.p, light_count, heap, sampler) # (wi, dist, pdf, eval)
     shadow_ray = luisa.make_ray(it.p, light.wi, 1e-4, light.dist)
     occluded = accel.trace_any(shadow_ray, -1)
     cos_wi_light = dot(light.wi, it.ns)

@@ -7,7 +7,7 @@ from .interaction import read_bsdf, write_bsdf_grad, surface_interact
 
 
 @luisa.func
-def collocated_estimator(ray, sampler, heap, accel, material_buffer, texture_res):
+def collocated_estimator(ray, sampler, heap, accel, light_count, material_buffer, texture_res):
     hit = accel.trace_closest(ray, -1)
     if hit.miss():
         return float3(0.0)
@@ -25,7 +25,7 @@ def collocated_estimator(ray, sampler, heap, accel, material_buffer, texture_res
 
 
 @luisa.func
-def collocated_estimator_backward(ray, sampler, heap, accel,
+def collocated_estimator_backward(ray, sampler, heap, accel, light_count,
                                d_material_buffer, material_buffer, texture_res, le_grad):
     hit = accel.trace_closest(ray, -1)
     if hit.miss():

@@ -47,44 +47,59 @@ class Scene:
         obj_file (str): Path to the OBJ file containing the 3D model geometry.
 
     """
-    def __init__(self, models):
-        self.accel = luisa.Accel()
-        self.heap = luisa.BindlessArray()
-        inst_metadata = []
-        samplable_light_insts = []
-        inst_trig_count = []
-        for idx, model in enumerate(models):
-            obj_file, _, emission = model
-            if emission.x>0 or emission.y>0 or emission.z>0:
-                samplable_light_insts.append(idx)
-            inst_metadata.append(emission)
-            vertices, faces = read_obj(obj_file)
-            vertex_buffer = luisa.Buffer(dtype=Vertex, size=len(vertices))
-            vertex_buffer.copy_from_array(numpy.array([(*v,*t,*n) for v,t,n in vertices], dtype=numpy.float32))
-            triangles = concat_triangles(faces)
-            inst_trig_count.append(len(triangles)//3)
-            triangle_buffer = luisa.buffer(triangles)
-            if math.isnan(vertices[0][2][0]): # recompute if vertex normal isn't availble
-                print("recomputing normal...")
-                recompute_normal(vertex_buffer, triangle_buffer)
-            self.accel.add(vertex_buffer, triangle_buffer)
-            self.heap.emplace(idx*2+0, triangle_buffer)
-            self.heap.emplace(idx*2+1, vertex_buffer)
-        self.heap.emplace(23333, luisa.buffer(inst_metadata))
-        self.heap.emplace(23334, luisa.buffer(samplable_light_insts))
-        self.heap.emplace(23335, luisa.buffer(inst_trig_count))
-        self.accel.update()
-        self.heap.update()
-
+    def __init__(self, models, integrator='direct'):
+        self.load_geometry(models)
         self.camera = luisa.struct(
             fov = 40 / 180 * 3.1415926,
             origin = float3(1.0, 0.5, 0.0),
             target = float3(0.0, 0.0, 0.0),
             up = float3(0.0, 1.0, 0.0)
         )
+        if integrator != 'collocated' and self.light_count == 0:
+            raise RuntimeError("No light source detected!")
+        integrators = {
+            "direct": (render_direct_kernel, render_direct_backward_kernel),
+            "collocated": (render_collocated_kernel, render_collocated_backward_kernel),
+        }
+        self.forward_kernel, self.backward_kernel = integrators[integrator]
         self.use_tent_filter = True
-        self.forward_kernel = render_direct_kernel
-        self.backward_kernel = render_direct_backward_kernel
+
+    def load_geometry(self, models):
+        self.accel = luisa.Accel()
+        self.heap = luisa.BindlessArray()
+        inst_metadata = [] # information for each model, e.g. emission, bsdf type
+        light_insts = [] # instances that should be sampled as a light source
+        inst_trig_count = [] # number of triangles in each mesh instance
+        for idx, model in enumerate(models):
+            obj_file, _, emission = model
+            if emission.x>0 or emission.y>0 or emission.z>0:
+                light_insts.append(idx)
+            inst_metadata.append(emission)
+            # load geometry obj file
+            vertices, faces = read_obj(obj_file)
+            vertex_buffer = luisa.Buffer(dtype=Vertex, size=len(vertices))
+            vertex_buffer.copy_from_array(numpy.array([(*v,*t,*n) for v,t,n in vertices], dtype=numpy.float32))
+            triangles = concat_triangles(faces)
+            # number of triangles
+            inst_trig_count.append(len(triangles)//3)
+            triangle_buffer = luisa.buffer(triangles)
+            # recompute if vertex normal isn't available
+            if math.isnan(vertices[0][2][0]):
+                print("recomputing normal...")
+                recompute_normal(vertex_buffer, triangle_buffer)
+            self.accel.add(vertex_buffer, triangle_buffer)
+            self.heap.emplace(idx*2+0, triangle_buffer)
+            self.heap.emplace(idx*2+1, vertex_buffer)
+        if idx >= 10000:
+            raise RuntimeError('exceeding maximum number of mesh instances')
+        self.light_count = len(light_insts)
+        # put auxiliary buffers into bindless array
+        self.heap.emplace(23333, luisa.buffer(inst_metadata))
+        if self.light_count > 0:
+            self.heap.emplace(23334, luisa.buffer(light_insts))
+        self.heap.emplace(23335, luisa.buffer(inst_trig_count))
+        self.accel.update()
+        self.heap.update()
 
     def render_forward(self, material, res, spp, seed, kernel=None):
         assert material.ndim == 3 and material.shape[2] == 4
@@ -96,8 +111,8 @@ class Scene:
         if kernel is None:
             kernel = self.forward_kernel
         kernel(image_buffer,
-            self.heap,
-            self.accel, material_buffer, int2(*texture_res), self.camera,
+            self.heap, self.accel, self.light_count,
+            material_buffer, int2(*texture_res), self.camera,
             spp, seed, self.use_tent_filter, dispatch_size=res)
         luisa.synchronize()
         return image
@@ -120,7 +135,7 @@ class Scene:
         if kernel is None:
             kernel = self.backward_kernel
         kernel(d_image,
-            self.heap, self.accel,
+            self.heap, self.accel, self.light_count,
             d_material_buffer, material_buffer, int2(*texture_res), self.camera,
             spp, seed+1, self.use_tent_filter, dispatch_size=res)
         # print("REF", len(gc.get_referrers(grad_output)), len(gc.get_referrers(d_image)))
