@@ -3,6 +3,7 @@ import random
 from PIL import Image
 from tqdm import tqdm
 import imageio
+import time
 
 import sys
 sys.path.append('..')
@@ -17,32 +18,44 @@ def load_material(diffuse_file, roughness_file):
     mat = torch.vstack((diffuse_img, roughness_img)).permute((1,2,0))**2.2
     return mat.contiguous()
 
-obj_file = 'assets/cbox-combined.obj'
-obj_file = 'assets/sphere.obj'
-scene = Scene([(obj_file,)])
+cbox_model = [
+    ('assets/cboxuv.obj', 1, luisa.float3(0.0)),
+    ('assets/cbox-light.obj', 0, luisa.float3(20.0))
+]
+# cbox_model = [
+#     ('assets/sphere.obj', 1, luisa.float3(0.0)),
+# ]
+scene = Scene(cbox_model)
 scene.camera = luisa.struct(
     fov = 50 / 180 * 3.1415926,
-    origin = luisa.float3(-0.2, 2.5, 6.0),
-    target = luisa.float3(-0.2, 2.5, -2.5),
+    origin = luisa.float3(-0.2, 2.6, 6.0),
+    target = luisa.float3(-0.2, 2.6, -2.5),
     up = luisa.float3(0.0, 1.0, 0.0)
 )
-scene.camera = luisa.struct(
-    fov = 50 / 180 * 3.1415926,
-    origin = luisa.float3(1.0, 0.0, 0.0),
-    target = luisa.float3(0.0, 0.0, 0.0),
-    up = luisa.float3(0.0, 1.0, 0.0)
-)
+# scene.camera = luisa.struct(
+#     fov = 50 / 180 * 3.1415926,
+#     origin = luisa.float3(1.0, 0.0, 0.0),
+#     target = luisa.float3(0.0, 0.0, 0.0),
+#     up = luisa.float3(0.0, 1.0, 0.0)
+# )
 diffuse_file = 'assets/wood_olive/wood_olive_wood_olive_basecolor.png'
 roughness_file = 'assets/wood_olive/wood_olive_wood_olive_roughness.png'
 material_GT = load_material(diffuse_file, roughness_file)
 ImgRes = 1024, 1024
 print("Image resolution:", ImgRes)
+
+# print("Forward", 128, 'spp:')
+# for it in tqdm(range(200)):
+#     Itmp = scene.render(material_GT, res=ImgRes, spp=128, seed=random.randint(0, 2147483647)) # seed defaults to 0
+
 I_GT = scene.render(material_GT, res=ImgRes, spp=128) # seed defaults to 0
 Image.fromarray((I_GT[...,0:3].clamp(min=0,max=1)**0.454*255).to(torch.uint8).cpu().numpy()).save('results/gt.png')
+
 
 # duv/dxy (screen space to texture space jacobian)
 # duvdxy = scene.render_duvdxy(material_GT, res=ImgRes, spp=128) # seed defaults to 0
 # Image.fromarray(((duvdxy[...,0:3]*1000+0.5).clamp(min=0,max=1)**0.454*255).to(torch.uint8).cpu().numpy()).save('results/duvdx_dudy.png')
+# quit()
 
 # ======== Optimization using differentiable rendering ========
 # Note that this is just an example, where scene.camera remains unchanged.

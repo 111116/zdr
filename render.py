@@ -16,7 +16,7 @@ from .load_obj import read_obj, concat_triangles
 from .recompute_normal import recompute_normal
 from .uvgrad import render_uvgrad_kernel
 from .collocated import render_collocated_kernel, render_collocated_backward_kernel
-# from .direct import render_direct_kernel, render_direct_backward_kernel
+from .direct import render_direct_kernel, render_direct_backward_kernel
 from .vertex import Vertex
 
 # Using CUDA for interaction with PyTorch
@@ -50,17 +50,29 @@ class Scene:
     def __init__(self, models):
         self.accel = luisa.Accel()
         self.heap = luisa.BindlessArray()
+        inst_metadata = []
+        samplable_light_insts = []
+        inst_trig_count = []
         for idx, model in enumerate(models):
-            vertices, faces = read_obj(model[0])
+            obj_file, _, emission = model
+            if emission.x>0 or emission.y>0 or emission.z>0:
+                samplable_light_insts.append(idx)
+            inst_metadata.append(emission)
+            vertices, faces = read_obj(obj_file)
             vertex_buffer = luisa.Buffer(dtype=Vertex, size=len(vertices))
             vertex_buffer.copy_from_array(numpy.array([(*v,*t,*n) for v,t,n in vertices], dtype=numpy.float32))
-            triangle_buffer = luisa.buffer(concat_triangles(faces))
+            triangles = concat_triangles(faces)
+            inst_trig_count.append(len(triangles)//3)
+            triangle_buffer = luisa.buffer(triangles)
             if math.isnan(vertices[0][2][0]): # recompute if vertex normal isn't availble
                 print("recomputing normal...")
                 recompute_normal(vertex_buffer, triangle_buffer)
             self.accel.add(vertex_buffer, triangle_buffer)
             self.heap.emplace(idx*2+0, triangle_buffer)
             self.heap.emplace(idx*2+1, vertex_buffer)
+        self.heap.emplace(23333, luisa.buffer(inst_metadata))
+        self.heap.emplace(23334, luisa.buffer(samplable_light_insts))
+        self.heap.emplace(23335, luisa.buffer(inst_trig_count))
         self.accel.update()
         self.heap.update()
 
@@ -71,8 +83,8 @@ class Scene:
             up = float3(0.0, 1.0, 0.0)
         )
         self.use_tent_filter = True
-        self.forward_kernel = render_collocated_kernel
-        self.backward_kernel = render_collocated_backward_kernel
+        self.forward_kernel = render_direct_kernel
+        self.backward_kernel = render_direct_backward_kernel
 
     def render_forward(self, material, res, spp, seed, kernel=None):
         assert material.ndim == 3 and material.shape[2] == 4
