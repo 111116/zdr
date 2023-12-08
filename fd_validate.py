@@ -7,7 +7,7 @@ import imageio
 
 import sys
 sys.path.append('..')
-from zdr import Scene
+from zdr import Scene, Camera, float3
 
 def load_material(diffuse_file, roughness_file):
     from torchvision.transforms import ToTensor
@@ -17,8 +17,30 @@ def load_material(diffuse_file, roughness_file):
     mat = torch.vstack((diffuse_img, roughness_img)).permute((1,2,0))**2.2
     return mat.contiguous()
 
-obj_file = 'assets/sphere.obj'
-scene = Scene(obj_file, use_face_normal=True)
+
+cbox_model = [
+    ('assets/cboxuv.obj', 1, float3(0.0)),
+    ('assets/cbox-light.obj', 0, float3(20.0))
+]
+sphere_model = [
+    ('assets/sphere.obj', 1, float3(0.0)),
+]
+cbox_camera1 = Camera(
+    fov = 50 / 180 * 3.1415926,
+    origin = float3(-0.2, 2.6, 6.0),
+    target = float3(-0.2, 2.6, -2.5),
+    up = float3(0.0, 1.0, 0.0)
+)
+sphere_camera1 = Camera(
+    fov = 50 / 180 * 3.1415926,
+    origin = float3(1.0, 0.0, 0.0),
+    target = float3(0.0, 0.0, 0.0),
+    up = float3(0.0, 1.0, 0.0)
+)
+
+scene = Scene(cbox_model, integrator='direct')
+scene.camera = cbox_camera1
+
 diffuse_file = 'assets/wood_olive/wood_olive_wood_olive_basecolor.png'
 roughness_file = 'assets/wood_olive/wood_olive_wood_olive_roughness.png'
 material_GT = load_material(diffuse_file, roughness_file)
@@ -101,6 +123,7 @@ while True:
     material_GT.requires_grad_()
     material_GT.grad = None
     I_GT = scene.render(material_GT, res=(1024,1024), spp=128) # seed defaults to 0
+    print(f"GT min={I_GT.min().item()}, max={I_GT.max().item()}, contains_nan={I_GT.isnan().any().item()}")
     # Don't select the alpha channel (c=3) because the derivatives will all be zero
     imgidx = importance_sample_tensor(I_GT[...,0:3])
 

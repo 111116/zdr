@@ -7,7 +7,7 @@ import time
 
 import sys
 sys.path.append('..')
-from zdr import Scene
+from zdr import Scene, float3, Camera
 import luisa
 
 def load_material(diffuse_file, roughness_file):
@@ -19,23 +19,23 @@ def load_material(diffuse_file, roughness_file):
     return mat.contiguous()
 
 cbox_model = [
-    ('assets/cboxuv.obj', 1, luisa.float3(0.0)),
-    ('assets/cbox-light.obj', 0, luisa.float3(20.0))
+    ('assets/cboxuv.obj', 1, float3(0.0)),
+    ('assets/cbox-light.obj', 0, float3(20.0))
 ]
 sphere_model = [
-    ('assets/sphere.obj', 1, luisa.float3(0.0)),
+    ('assets/sphere.obj', 1, float3(0.0)),
 ]
-cbox_camera1 = luisa.struct(
+cbox_camera1 = Camera(
     fov = 50 / 180 * 3.1415926,
-    origin = luisa.float3(-0.2, 2.6, 6.0),
-    target = luisa.float3(-0.2, 2.6, -2.5),
-    up = luisa.float3(0.0, 1.0, 0.0)
+    origin = float3(-0.2, 2.6, 6.0),
+    target = float3(-0.2, 2.6, -2.5),
+    up = float3(0.0, 1.0, 0.0)
 )
-sphere_camera1 = luisa.struct(
+sphere_camera1 = Camera(
     fov = 50 / 180 * 3.1415926,
-    origin = luisa.float3(1.0, 0.0, 0.0),
-    target = luisa.float3(0.0, 0.0, 0.0),
-    up = luisa.float3(0.0, 1.0, 0.0)
+    origin = float3(1.0, 0.0, 0.0),
+    target = float3(0.0, 0.0, 0.0),
+    up = float3(0.0, 1.0, 0.0)
 )
 
 scene = Scene(sphere_model, integrator='collocated')

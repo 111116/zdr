@@ -22,6 +22,8 @@ from .vertex import Vertex
 # Using CUDA for interaction with PyTorch
 luisa.init('cuda')
 
+Camera = luisa.StructType(fov=float, origin=float3, target=float3, up=float3)
+
 
 class Scene:
     """A class representing a 3D scene for differentiable rendering.
@@ -49,7 +51,7 @@ class Scene:
     """
     def __init__(self, models, integrator='direct'):
         self.load_geometry(models)
-        self.camera = luisa.struct(
+        self.camera = Camera(
             fov = 40 / 180 * 3.1415926,
             origin = float3(1.0, 0.5, 0.0),
             target = float3(0.0, 0.0, 0.0),
