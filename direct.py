@@ -97,7 +97,8 @@ def direct_estimator(ray, sampler, heap, accel, light_count, material_buffer, te
     shadow_ray = luisa.make_ray(it.p, light.wi, 1e-4, light.dist)
     occluded = accel.trace_any(shadow_ray, -1)
     cos_wi_light = dot(light.wi, it.ns)
-    if not occluded:
+    # there could still be light from back face due to imperfect occlusion
+    if not occluded and cos_wi_light > 0.0:
         mat = read_bsdf(it.uv, material_buffer, texture_res)
         diffuse = mat.xyz
         roughness = mat.w
