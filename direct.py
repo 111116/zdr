@@ -30,7 +30,7 @@ def direct_estimator(ray, sampler, heap, accel, light_count, material_buffer, te
         diffuse = mat.xyz
         roughness = mat.w
         specular = 0.04
-        bsdf = ggx_brdf(-ray.get_dir(), -ray.get_dir(), it.ns, diffuse, specular, roughness)
+        bsdf = ggx_brdf(-ray.get_dir(), light.wi, it.ns, diffuse, specular, roughness)
         # mis_weight = balanced_heuristic(light.pdf, pdf_bsdf)
         mis_weight = 1.0
         radiance += bsdf * cos_wi_light * mis_weight * light.eval / max(light.pdf, 1e-4)
@@ -58,7 +58,7 @@ def direct_estimator_backward(ray, sampler, heap, accel, light_count,
             diffuse = mat.xyz
             roughness = mat.w
             specular = 0.04
-            bsdf = ggx_brdf(-ray.get_dir(), -ray.get_dir(), it.ns, diffuse, specular, roughness)
+            bsdf = ggx_brdf(-ray.get_dir(), light.wi, it.ns, diffuse, specular, roughness)
             # mis_weight = balanced_heuristic(light.pdf, pdf_bsdf)
             mis_weight = 1.0
             le = bsdf * cos_wi_light * mis_weight * light.eval / max(light.pdf, 1e-4)
