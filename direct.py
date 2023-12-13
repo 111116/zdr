@@ -5,6 +5,7 @@ from .microfacet import ggx_brdf
 from .integrator import derive_render_kernel, derive_render_backward_kernel
 from .interaction import read_bsdf, write_bsdf_grad, surface_interact
 from .light import sample_light
+from .onb import *
 
 @luisa.func
 def direct_estimator(ray, sampler, heap, accel, light_count, material_buffer, texture_res):
@@ -24,13 +25,14 @@ def direct_estimator(ray, sampler, heap, accel, light_count, material_buffer, te
     shadow_ray = luisa.make_ray(it.p, light.wi, 1e-4, light.dist)
     occluded = accel.trace_any(shadow_ray, -1)
     cos_wi_light = dot(light.wi, it.ns)
+    onb = make_onb(it.ns)
     # there could still be light from back face due to imperfect occlusion
     if not occluded and cos_wi_light > 0.0:
         mat = read_bsdf(it.uv, material_buffer, texture_res)
         diffuse = mat.xyz
         roughness = mat.w
         specular = 0.04
-        bsdf = ggx_brdf(-ray.get_dir(), light.wi, it.ns, diffuse, specular, roughness)
+        bsdf = ggx_brdf(onb.to_local(-ray.get_dir()), onb.to_local(light.wi), diffuse, specular, roughness)
         # mis_weight = balanced_heuristic(light.pdf, pdf_bsdf)
         mis_weight = 1.0
         radiance += bsdf * cos_wi_light * mis_weight * light.eval / max(light.pdf, 1e-4)
@@ -51,6 +53,7 @@ def direct_estimator_backward(ray, sampler, heap, accel, light_count,
     shadow_ray = luisa.make_ray(it.p, light.wi, 1e-4, light.dist)
     occluded = accel.trace_any(shadow_ray, -1)
     cos_wi_light = dot(light.wi, it.ns)
+    onb = make_onb(it.ns)
     if not occluded:
         mat = read_bsdf(it.uv, material_buffer, texture_res)
         with autodiff():
@@ -58,7 +61,7 @@ def direct_estimator_backward(ray, sampler, heap, accel, light_count,
             diffuse = mat.xyz
             roughness = mat.w
             specular = 0.04
-            bsdf = ggx_brdf(-ray.get_dir(), light.wi, it.ns, diffuse, specular, roughness)
+            bsdf = ggx_brdf(onb.to_local(-ray.get_dir()), onb.to_local(light.wi), diffuse, specular, roughness)
             # mis_weight = balanced_heuristic(light.pdf, pdf_bsdf)
             mis_weight = 1.0
             le = bsdf * cos_wi_light * mis_weight * light.eval / max(light.pdf, 1e-4)
