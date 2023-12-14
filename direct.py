@@ -24,18 +24,19 @@ def direct_estimator(ray, sampler, heap, accel, light_count, material_buffer, te
     light = sample_light(it.p, light_count, heap, sampler) # (wi, dist, pdf, eval)
     shadow_ray = luisa.make_ray(it.p, light.wi, 1e-4, light.dist)
     occluded = accel.trace_any(shadow_ray, -1)
-    cos_wi_light = dot(light.wi, it.ns)
     onb = make_onb(it.ns)
+    wo_local = onb.to_local(-ray.get_dir())
+    wi_light_local = onb.to_local(light.wi)
     # there could still be light from back face due to imperfect occlusion
-    if not occluded and cos_wi_light > 0.0:
+    if not occluded and wi_light_local.z > 0.0:
         mat = read_bsdf(it.uv, material_buffer, texture_res)
         diffuse = mat.xyz
         roughness = mat.w
         specular = 0.04
-        bsdf = ggx_brdf(onb.to_local(-ray.get_dir()), onb.to_local(light.wi), diffuse, specular, roughness)
+        bsdf = ggx_brdf(wo_local, wi_light_local, diffuse, specular, roughness)
         # mis_weight = balanced_heuristic(light.pdf, pdf_bsdf)
         mis_weight = 1.0
-        radiance += bsdf * cos_wi_light * mis_weight * light.eval / max(light.pdf, 1e-4)
+        radiance += bsdf * mis_weight * light.eval / max(light.pdf, 1e-4)
     return radiance
 
 
