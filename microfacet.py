@@ -39,7 +39,7 @@ def cosine_sample_hemisphere(u: float2):
 
 @luisa.func
 def ggx_sample(wo, diffuse, specular, roughness, sampler):
-    if sampler.next() < 0.0:
+    if sampler.next() < 0.5:
         # sample diffuse lobe with p=0.5
         return cosine_sample_hemisphere(sampler.next2f())
     else:
@@ -55,7 +55,7 @@ def ggx_sample_pdf(wo, wi, diffuse, specular, roughness):
     # mixed pdf
     diffuse_pdf = wi.z / pi
     glossy_pdf = pdf_wm(wo, wm, alpha) / (4 * abs(dot(wo, wm)))
-    return 0.0 * diffuse_pdf + 1.0 * glossy_pdf
+    return 0.5 * diffuse_pdf + 0.5 * glossy_pdf
 
 
 @luisa.func
