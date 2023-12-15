@@ -12,15 +12,14 @@ import luisa
 
 def load_material(diffuse_file, roughness_file):
     from torchvision.transforms import ToTensor
-    diffuse_img = ToTensor()(Image.open(diffuse_file)).cuda()
-    roughness_img = ToTensor()(Image.open(roughness_file)).cuda()
-    assert roughness_img.shape[0] == 1
+    diffuse_img = ToTensor()(Image.open(diffuse_file)).cuda()[0:3]
+    roughness_img = ToTensor()(Image.open(roughness_file)).cuda()[0:1]
     mat = torch.vstack((diffuse_img, roughness_img)).permute((1,2,0))**2.2
     return mat.contiguous()
 
 cbox_model = [
     ('assets/cboxuv.obj', 1, float3(0.0)),
-    ('assets/cbox-light.obj', 0, float3(20.0))
+    ('assets/cbox-light.obj', 0, float3(17, 12, 4))
 ]
 sphere_model = [
     ('assets/sphere.obj', 1, float3(0.0)),
@@ -38,11 +37,13 @@ sphere_camera1 = Camera(
     up = float3(0.0, 1.0, 0.0)
 )
 
-scene = Scene(cbox_model, integrator='direct')
+scene = Scene(cbox_model, integrator='path')
 scene.camera = cbox_camera1
 
 diffuse_file = 'assets/wood_olive/wood_olive_wood_olive_basecolor.png'
 roughness_file = 'assets/wood_olive/wood_olive_wood_olive_roughness.png'
+diffuse_file = 'assets/cboxd.png'
+roughness_file = 'assets/cboxr.png'
 material_GT = load_material(diffuse_file, roughness_file)
 ImgRes = 1024, 1024
 print("Image resolution:", ImgRes)
@@ -53,7 +54,7 @@ print("Image resolution:", ImgRes)
 
 I_GT = scene.render(material_GT, res=ImgRes, spp=128) # seed defaults to 0
 Image.fromarray((I_GT[...,0:3].clamp(min=0,max=1)**0.454*255).to(torch.uint8).cpu().numpy()).save('results/gt.png')
-
+quit()
 
 # duv/dxy (screen space to texture space jacobian)
 # duvdxy = scene.render_duvdxy(material_GT, res=ImgRes, spp=128) # seed defaults to 0

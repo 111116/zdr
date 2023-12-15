@@ -17,6 +17,7 @@ from .recompute_normal import recompute_normal
 from .uvgrad import render_uvgrad_kernel
 from .collocated import render_collocated_kernel, render_collocated_backward_kernel
 from .direct import render_direct_kernel, render_direct_backward_kernel
+from .prb import render_path_kernel, render_path_backward_kernel
 from .vertex import Vertex
 
 # Using CUDA for interaction with PyTorch
@@ -60,6 +61,7 @@ class Scene:
         if integrator != 'collocated' and self.light_count == 0:
             raise RuntimeError("No light source detected!")
         integrators = {
+            "path": (render_path_kernel, render_path_backward_kernel),
             "direct": (render_direct_kernel, render_direct_backward_kernel),
             "collocated": (render_collocated_kernel, render_collocated_backward_kernel),
         }
