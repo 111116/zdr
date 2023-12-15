@@ -58,15 +58,15 @@ def sample_light(origin, light_count, heap, sampler):
         abc = sample_uniform_triangle(sampler.next2f())
         p = abc.x * p0 + abc.y * p1 + abc.z * p2 # point on light
         emission = heap.buffer_read(float3, 23333, inst)
-        # calculating pdf (avoid calling mesh_light_sampled_pdf to save some redundant computation)
+        # calculating pdf (avoid calling mesh_light_sampled_pdf to save I/O)
         wi_light = normalize(p - origin)
         c = cross(p1 - p0, p2 - p0)
         light_normal = normalize(c)
         cos_light = -dot(light_normal, wi_light)
-        emission = emission if cos_light > 1e-4 else float3(0)
         sqr_dist = length_squared(p - origin)
         area = length(c) / 2
         pdf = sqr_dist / (n * trig_count * area * cos_light)
+        emission = emission if cos_light > 1e-4 else float3(0)
         # return as struct
         t = LightSampleStruct()
         t.wi = wi_light
@@ -74,3 +74,26 @@ def sample_light(origin, light_count, heap, sampler):
         t.pdf = pdf
         t.eval = emission
         return t
+
+@luisa.func
+def sample_light_pdf(origin, light_count, heap, inst, prim, p):
+    mesh_light_count = light_count
+    n = point_light_count + mesh_light_count
+    trig_count = heap.buffer_read(int, 23335, inst)
+    # fetch sampled primitive (triangle)
+    i0 = heap.buffer_read(int, inst * 2, prim * 3 + 0)
+    i1 = heap.buffer_read(int, inst * 2, prim * 3 + 1)
+    i2 = heap.buffer_read(int, inst * 2, prim * 3 + 2)
+    p0 = heap.buffer_read(Vertex, inst * 2 + 1, i0).v()
+    p1 = heap.buffer_read(Vertex, inst * 2 + 1, i1).v()
+    p2 = heap.buffer_read(Vertex, inst * 2 + 1, i2).v()
+    # calculating pdf
+    wi_light = normalize(p - origin)
+    c = cross(p1 - p0, p2 - p0)
+    light_normal = normalize(c)
+    cos_light = -dot(light_normal, wi_light)
+    sqr_dist = length_squared(p - origin)
+    area = length(c) / 2
+    # apply transform TODO
+    pdf = sqr_dist / (n * trig_count * area * cos_light)
+    return pdf
