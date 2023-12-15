@@ -4,6 +4,7 @@ from luisa.autodiff import requires_grad, autodiff, backward, grad
 from .microfacet import ggx_brdf
 from .integrator import derive_render_kernel, derive_render_backward_kernel
 from .interaction import read_bsdf, write_bsdf_grad, surface_interact
+from .onb import *
 
 
 @luisa.func
@@ -18,7 +19,9 @@ def collocated_estimator(ray, sampler, heap, accel, light_count, material_buffer
     diffuse = mat.xyz
     roughness = mat.w
     specular = 0.04
-    beta = ggx_brdf(-ray.get_dir(), -ray.get_dir(), it.ns, diffuse, specular, roughness)
+    onb = make_onb(it.ns)
+    wo_local = onb.to_local(-ray.get_dir())
+    beta = ggx_brdf(wo_local, wo_local, diffuse, specular, roughness)
     intensity = float3(1.0)
     li = intensity * (1/hit.ray_t)**2
     return beta * li
@@ -39,7 +42,9 @@ def collocated_estimator_backward(ray, sampler, heap, accel, light_count,
         diffuse = mat.xyz
         roughness = mat.w
         specular = 0.04
-        beta = ggx_brdf(-ray.get_dir(), -ray.get_dir(), it.ns, diffuse, specular, roughness)
+        onb = make_onb(it.ns)
+        wo_local = onb.to_local(-ray.get_dir())
+        beta = ggx_brdf(wo_local, wo_local, diffuse, specular, roughness)
         intensity = float3(1.0)
         li = intensity * (1/hit.ray_t)**2
         le = beta * li
