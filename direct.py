@@ -45,7 +45,7 @@ def direct_estimator(ray, sampler, heap, accel, light_count, material_buffer, te
     wi_local = ggx_sample(wo_local, diffuse, specular, roughness, sampler)
     pdf_bsdf = ggx_sample_pdf(wo_local, wi_local, diffuse, specular, roughness)
     wi = onb.to_world(wi_local)
-    if dot(wi, it.ng) < 1e-4:
+    if dot(wi, it.ng) < 1e-4 or wi_local.z < 1e-4:
         return radiance
     ray = luisa.make_ray(luisa.offset_ray_origin(it.p, it.ng), wi, 0.0, 1e30)
     beta = ggx_brdf(wo_local, wi_local, diffuse, specular, roughness) / pdf_bsdf
