@@ -83,7 +83,7 @@ def path_estimator(ray, sampler, heap, accel, light_count, material_buffer, text
 @luisa.func
 def path_estimator_backward(ray, sampler, heap, accel, light_count,
                             d_material_buffer, material_buffer, texture_res, le_grad):
-    DO_PRINT = (dispatch_id().x==835) and (dispatch_id().y==239)
+    # DO_PRINT = (dispatch_id().x==835) and (dispatch_id().y==239)
     # make a copy of sampler state for path replay
     # Note: LC assigns by value but passes structs by reference
     ray_twin = ray
@@ -91,7 +91,6 @@ def path_estimator_backward(ray, sampler, heap, accel, light_count,
     Le = path_estimator(ray_twin, sampler_twin, heap, accel, light_count, material_buffer, texture_res)
     if any(isnan(Le)):
         return
-    Le_initial = Le
     beta = float3(1.0) # path throughput
     pdf_bsdf = 1e30 # current angular sample density
     mat_grad = float4(0.0)
