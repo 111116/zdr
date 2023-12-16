@@ -89,22 +89,27 @@ def direct_estimator_backward(ray, sampler, heap, accel, light_count,
     it = surface_interact(hit, heap)
     if dot(-ray.get_dir(), it.ng) < 1e-4 or dot(-ray.get_dir(), it.ns) < 1e-4:
         return
+    emission = heap.buffer_read(float3, 23333, hit.inst)
+    if any(emission > float3(0.0)):
+        return
 
+    # direct light sample
     light = sample_light(it.p, light_count, heap, sampler) # (wi, dist, pdf, eval)
     shadow_ray = luisa.make_ray(it.p, light.wi, 1e-4, light.dist)
     occluded = accel.trace_any(shadow_ray, -1)
     cos_wi_light = dot(light.wi, it.ns)
     onb = make_onb(it.ns)
-    if not occluded:
+    if not occluded and cos_wi_light > 0.0:
         mat = read_bsdf(it.uv, material_buffer, texture_res)
         with autodiff():
+            # differentiate w.r.t. material
             requires_grad(mat)
             diffuse = mat.xyz
             roughness = mat.w
             specular = 0.04
             bsdf = ggx_brdf(onb.to_local(-ray.get_dir()), onb.to_local(light.wi), diffuse, specular, roughness)
             mis_weight = 1.0
-            le = bsdf * cos_wi_light * mis_weight * light.eval / max(light.pdf, 1e-4)
+            le = bsdf * mis_weight * light.eval / max(light.pdf, 1e-4)
             backward(le, le_grad)
             mat_grad = grad(mat)
     write_bsdf_grad(it.uv, mat_grad, d_material_buffer, texture_res)
