@@ -48,11 +48,11 @@ material_GT = load_material(diffuse_file, roughness_file)
 ImgRes = 1024, 1024
 print("Image resolution:", ImgRes)
 
-# print("Forward", 256, 'spp:')
-# for it in tqdm(range(500)):
-#     Itmp = scene.render(material_GT, res=ImgRes, spp=256, seed=random.randint(0, 2147483647)) # seed defaults to 0
+print("Forward", 64, 'spp:')
+for it in tqdm(range(50)):
+    Itmp = scene.render(material_GT, res=ImgRes, spp=64, seed=random.randint(0, 2147483647)) # seed defaults to 0
 
-I_GT = scene.render(material_GT, res=ImgRes, spp=128) # seed defaults to 0
+I_GT = scene.render(material_GT, res=ImgRes, spp=256) # seed defaults to 0
 Image.fromarray((I_GT[...,0:3].clamp(min=0,max=1)**0.454*255).to(torch.uint8).cpu().numpy()).save('results/gt.png')
 quit()
 
@@ -70,12 +70,13 @@ print("Texture resolution:", TexRes)
 material = torch.rand((*TexRes,4), device='cuda')
 material.requires_grad_()
 optimizer = torch.optim.Adam([material], lr=0.01)
-for it in tqdm(range(500)):
+for it in tqdm(range(2000)):
     I = scene.render(material, res=ImgRes, spp=4, seed=random.randint(0, 2147483647))
     ((I-I_GT)**2).sum().backward()
     optimizer.step()
     optimizer.zero_grad()
     material.data.clamp_(min=1e-3, max=1)
+
 
 # Rendered image of reconstruction
 I = scene.render(material, res=ImgRes, spp=64)
