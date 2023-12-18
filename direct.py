@@ -21,10 +21,11 @@ def direct_estimator(ray, sampler, heap, accel, light_count, material_buffer, te
     hit = accel.trace_closest(ray, -1)
     if hit.miss():
         return float3(0.0)
-    it = surface_interact(hit, heap)
+    return float3(0,0,1)
+    it = surface_interact(hit, heap, accel)
     # backfacing geometry
     if dot(-ray.get_dir(), it.ng) < 1e-4 or dot(-ray.get_dir(), it.ns) < 1e-4:
-        return float3(0.0)
+        return float3(1.0,0.0,0.0) # TODO DEBUG
     emission = heap.buffer_read(float3, 23333, hit.inst)
     if any(emission > float3(0.0)):
         return emission
@@ -37,7 +38,7 @@ def direct_estimator(ray, sampler, heap, accel, light_count, material_buffer, te
 
     # direct light sample
     radiance = float3(0.0)
-    light = sample_light(it.p, light_count, heap, sampler) # (wi, dist, pdf, eval)
+    light = sample_light(it.p, light_count, heap, accel, sampler) # (wi, dist, pdf, eval)
     shadow_ray = luisa.make_ray(it.p, light.wi, 1e-4, light.dist)
     occluded = accel.trace_any(shadow_ray, -1)
     onb = make_onb(it.ns)
@@ -67,13 +68,13 @@ def direct_estimator(ray, sampler, heap, accel, light_count, material_buffer, te
         hit = accel.trace_closest(ray, -1)
         if hit.miss():
             return radiance
-        it = surface_interact(hit, heap)
+        it = surface_interact(hit, heap, accel)
         # backfacing geometry
         if dot(-ray.get_dir(), it.ng) < 1e-4 or dot(-ray.get_dir(), it.ns) < 1e-4:
             return radiance
         emission = heap.buffer_read(float3, 23333, hit.inst)
         if any(emission > float3(0.0)):
-            pdf_light = sample_light_pdf(origin, light_count, heap, hit.inst, hit.prim, it.p)
+            pdf_light = sample_light_pdf(origin, light_count, heap, accel, hit.inst, hit.prim, it.p)
             mis_weight = balanced_heuristic(pdf_bsdf, pdf_light)
             return radiance + beta * mis_weight * emission
 
@@ -86,7 +87,7 @@ def direct_estimator_backward(ray, sampler, heap, accel, light_count,
     hit = accel.trace_closest(ray, -1)
     if hit.miss():
         return
-    it = surface_interact(hit, heap)
+    it = surface_interact(hit, heap, accel)
     if dot(-ray.get_dir(), it.ng) < 1e-4 or dot(-ray.get_dir(), it.ns) < 1e-4:
         return
     emission = heap.buffer_read(float3, 23333, hit.inst)
@@ -94,7 +95,7 @@ def direct_estimator_backward(ray, sampler, heap, accel, light_count,
         return
 
     # direct light sample
-    light = sample_light(it.p, light_count, heap, sampler) # (wi, dist, pdf, eval)
+    light = sample_light(it.p, light_count, heap, accel, sampler) # (wi, dist, pdf, eval)
     shadow_ray = luisa.make_ray(it.p, light.wi, 1e-4, light.dist)
     occluded = accel.trace_any(shadow_ray, -1)
     cos_wi_light = dot(light.wi, it.ns)

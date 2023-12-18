@@ -6,24 +6,26 @@ from .vertex import Vertex
 Interaction = luisa.StructType(p=float3, uv=float2, ns=float3, ng=float3)
 
 @luisa.func
-def surface_interact(hit, heap):
+def surface_interact(hit, heap, accel):
+    # read vertex info from bindless array
     i0 = heap.buffer_read(int, hit.inst * 2, hit.prim * 3 + 0)
     i1 = heap.buffer_read(int, hit.inst * 2, hit.prim * 3 + 1)
     i2 = heap.buffer_read(int, hit.inst * 2, hit.prim * 3 + 2)
-    p0 = heap.buffer_read(Vertex, hit.inst * 2 + 1, i0)
-    p1 = heap.buffer_read(Vertex, hit.inst * 2 + 1, i1)
-    p2 = heap.buffer_read(Vertex, hit.inst * 2 + 1, i2)
+    v0 = heap.buffer_read(Vertex, hit.inst * 2 + 1, i0)
+    v1 = heap.buffer_read(Vertex, hit.inst * 2 + 1, i1)
+    v2 = heap.buffer_read(Vertex, hit.inst * 2 + 1, i2)
+    # apply transform 
+    transform = accel.instance_transform(hit.inst)
+    p0 = (transform * float4(v0.v(), 1.0)).xyz
+    p1 = (transform * float4(v1.v(), 1.0)).xyz
+    p2 = (transform * float4(v2.v(), 1.0)).xyz
+    # compute hit point
     it = Interaction()
-    it.p = hit.interpolate(p0.v(), p1.v(), p2.v())
-    it.uv = hit.interpolate(p0.vt(), p1.vt(), p2.vt())
-    it.ns = hit.interpolate(p0.vn(), p1.vn(), p2.vn())
-    it.ng = normalize(cross(p1.v() - p0.v(), p2.v() - p0.v()))
-    # TODO apply transform 
-    # transform = accel.instance_transform(hit.inst)
-    # p0 = (transform * float4(p0, 1.0)).xyz
-    # p1 = (transform * float4(p1, 1.0)).xyz
-    # p2 = (transform * float4(p2, 1.0)).xyz
-    # n = normalize(inverse(transpose(make_float3x3(transform))) * vn)
+    it.p = hit.interpolate(p0, p1, p2)
+    it.uv = hit.interpolate(v0.vt(), v1.vt(), v2.vt())
+    ns0 = hit.interpolate(v0.vn(), v1.vn(), v2.vn())
+    it.ns = normalize(inverse(transpose(make_float3x3(transform))) * ns0)
+    it.ng = normalize(cross(p1 - p0, p2 - p0))
     return it
 
 

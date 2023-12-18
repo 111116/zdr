@@ -71,29 +71,41 @@ class Scene:
     def load_geometry(self, models):
         self.accel = luisa.Accel()
         self.heap = luisa.BindlessArray()
+        self.loaded_obj = {}
         inst_metadata = [] # information for each model, e.g. emission, bsdf type
         light_insts = [] # instances that should be sampled as a light source
         inst_trig_count = [] # number of triangles in each mesh instance
+
         for idx, model in enumerate(models):
-            obj_file, _, emission = model
+            obj_file, transform, emission = model
+            if transform is None:
+                transform = luisa.float4x4(1.0)
+            if emission is None:
+                emission = float3(0.0)
             if emission.x>0 or emission.y>0 or emission.z>0:
                 light_insts.append(idx)
             inst_metadata.append(emission)
-            # load geometry obj file
-            vertices, faces = read_obj(obj_file)
-            vertex_buffer = luisa.Buffer(dtype=Vertex, size=len(vertices))
-            vertex_buffer.copy_from_array(numpy.array([(*v,*t,*n) for v,t,n in vertices], dtype=numpy.float32))
-            triangles = concat_triangles(faces)
-            # number of triangles
-            inst_trig_count.append(len(triangles)//3)
-            triangle_buffer = luisa.buffer(triangles)
-            # recompute if vertex normal isn't available
-            if math.isnan(vertices[0][2][0]):
-                print("computing vertex normal vectors from faces...")
-                recompute_normal(vertex_buffer, triangle_buffer)
-            self.accel.add(vertex_buffer, triangle_buffer)
+
+            def get_obj_geometry(obj_file):
+                if obj_file not in self.loaded_obj:
+                    vertices, faces = read_obj(obj_file)
+                    vertex_buffer = luisa.Buffer(dtype=Vertex, size=len(vertices))
+                    vertex_buffer.copy_from_array(numpy.array([(*v,*t,*n) for v,t,n in vertices], dtype=numpy.float32))
+                    triangles = concat_triangles(faces)
+                    triangle_buffer = luisa.buffer(triangles)
+                    # recompute if vertex normal isn't available
+                    if math.isnan(vertices[0][2][0]):
+                        print("computing vertex normal vectors from faces...")
+                        recompute_normal(vertex_buffer, triangle_buffer)
+                    self.loaded_obj[obj_file] = (vertex_buffer, triangle_buffer)
+                return self.loaded_obj[obj_file]
+
+            vertex_buffer, triangle_buffer = get_obj_geometry(obj_file)
+            inst_trig_count.append(triangle_buffer.size//3) # number of triangles
+            self.accel.add(vertex_buffer, triangle_buffer, transform=transform)
             self.heap.emplace(idx*2+0, triangle_buffer)
             self.heap.emplace(idx*2+1, vertex_buffer)
+
         self.inst_count = idx + 1
         if self.inst_count > 10000:
             raise RuntimeError('exceeding maximum number of mesh instances')

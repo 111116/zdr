@@ -19,7 +19,7 @@ def sample_uniform_triangle(u: float2):
     return make_float3(uv, 1.0 - uv.x - uv.y)
 
 @luisa.func
-def sample_light(origin, light_count, heap, sampler):
+def sample_light(origin, light_count, heap, accel, sampler):
     u = sampler.next()
     mesh_light_count = light_count
     n = point_light_count + mesh_light_count
@@ -47,14 +47,14 @@ def sample_light(origin, light_count, heap, sampler):
         i0 = heap.buffer_read(int, inst * 2, prim * 3 + 0)
         i1 = heap.buffer_read(int, inst * 2, prim * 3 + 1)
         i2 = heap.buffer_read(int, inst * 2, prim * 3 + 2)
-        p0 = heap.buffer_read(Vertex, inst * 2 + 1, i0).v()
-        p1 = heap.buffer_read(Vertex, inst * 2 + 1, i1).v()
-        p2 = heap.buffer_read(Vertex, inst * 2 + 1, i2).v()
-        # apply transform TODO
-        # transform = accel.instance_transform(inst)
-        # p0 = (transform * float4(p0, 1.0)).xyz
-        # p1 = (transform * float4(p1, 1.0)).xyz
-        # p2 = (transform * float4(p2, 1.0)).xyz
+        v0 = heap.buffer_read(Vertex, inst * 2 + 1, i0)
+        v1 = heap.buffer_read(Vertex, inst * 2 + 1, i1)
+        v2 = heap.buffer_read(Vertex, inst * 2 + 1, i2)
+        # apply transform 
+        transform = accel.instance_transform(inst)
+        p0 = (transform * float4(v0.v(), 1.0)).xyz
+        p1 = (transform * float4(v1.v(), 1.0)).xyz
+        p2 = (transform * float4(v2.v(), 1.0)).xyz
         abc = sample_uniform_triangle(sampler.next2f())
         p = abc.x * p0 + abc.y * p1 + abc.z * p2 # point on light
         emission = heap.buffer_read(float3, 23333, inst)
@@ -76,7 +76,7 @@ def sample_light(origin, light_count, heap, sampler):
         return t
 
 @luisa.func
-def sample_light_pdf(origin, light_count, heap, inst, prim, p):
+def sample_light_pdf(origin, light_count, heap, accel, inst, prim, p):
     mesh_light_count = light_count
     n = point_light_count + mesh_light_count
     trig_count = heap.buffer_read(int, 23335, inst)
@@ -84,9 +84,14 @@ def sample_light_pdf(origin, light_count, heap, inst, prim, p):
     i0 = heap.buffer_read(int, inst * 2, prim * 3 + 0)
     i1 = heap.buffer_read(int, inst * 2, prim * 3 + 1)
     i2 = heap.buffer_read(int, inst * 2, prim * 3 + 2)
-    p0 = heap.buffer_read(Vertex, inst * 2 + 1, i0).v()
-    p1 = heap.buffer_read(Vertex, inst * 2 + 1, i1).v()
-    p2 = heap.buffer_read(Vertex, inst * 2 + 1, i2).v()
+    v0 = heap.buffer_read(Vertex, inst * 2 + 1, i0)
+    v1 = heap.buffer_read(Vertex, inst * 2 + 1, i1)
+    v2 = heap.buffer_read(Vertex, inst * 2 + 1, i2)
+    # apply transform 
+    transform = accel.instance_transform(inst)
+    p0 = (transform * float4(v0.v(), 1.0)).xyz
+    p1 = (transform * float4(v1.v(), 1.0)).xyz
+    p2 = (transform * float4(v2.v(), 1.0)).xyz
     # calculating pdf
     wi_light = normalize(p - origin)
     c = cross(p1 - p0, p2 - p0)
@@ -94,6 +99,5 @@ def sample_light_pdf(origin, light_count, heap, inst, prim, p):
     cos_light = -dot(light_normal, wi_light)
     sqr_dist = length_squared(p - origin)
     area = length(c) / 2
-    # apply transform TODO
     pdf = sqr_dist / (n * trig_count * area * cos_light)
     return pdf
