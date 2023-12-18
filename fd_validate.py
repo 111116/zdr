@@ -38,7 +38,7 @@ sphere_camera1 = Camera(
     up = float3(0.0, 1.0, 0.0)
 )
 
-scene = Scene(cbox_model, integrator='path')
+scene = Scene(cbox_model, integrator='direct')
 scene.camera = cbox_camera1
 
 diffuse_file = 'assets/wood_olive/wood_olive_wood_olive_basecolor.png'

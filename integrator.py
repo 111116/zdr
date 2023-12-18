@@ -14,8 +14,8 @@ def derive_render_kernel(integrator_func):
         s = float3(0.0)
         for it in range(spp):
             # sampler = make_corrmj_sampler(int2(coord), seed, spp, it)
-            # sampler = make_pmj02bn_sampler(int2(coord), seed, spp, it)
-            sampler = luisa.util.make_random_sampler3d(int3(int2(coord), seed^(it*987654347)))
+            sampler = make_pmj02bn_sampler(int2(coord), seed, spp, it)
+            # sampler = luisa.util.make_random_sampler3d(int3(int2(coord), seed^(it*987654347)))
             pixel_offset = sampler.next2f()
             if use_tent_filter:
                 pixel_offset = tent_warp(pixel_offset, 1.0) + float2(0.5)
@@ -39,8 +39,8 @@ def derive_render_backward_kernel(integrator_backward_func):
             le_grad = float3(0.0)
         for it in range(spp):
             # sampler = make_corrmj_sampler(int2(coord), seed, spp, it)
-            # sampler = make_pmj02bn_sampler(int2(coord), seed, spp, it)
-            sampler = luisa.util.make_random_sampler3d(int3(int2(coord), seed^(it*987654347)))
+            sampler = make_pmj02bn_sampler(int2(coord), seed, spp, it)
+            # sampler = luisa.util.make_random_sampler3d(int3(int2(coord), seed^(it*987654347)))
             pixel_offset = sampler.next2f()
             if use_tent_filter:
                 pixel_offset = tent_warp(pixel_offset, 1.0) + float2(0.5)

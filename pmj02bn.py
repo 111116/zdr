@@ -29,7 +29,6 @@ def _pmj02bn_sample(set_id: int, sample_id: int) -> float2:
         i = set_index * nPMJ02bnSamples + sample_id
         return PMJ02bnSamples_buffer.read(i)
 
-#FIXME potentially produces negative results using signed int?
 @luisa.func
 def _permutation_element(i, l, w, p):
     while True:
@@ -53,10 +52,13 @@ def _permutation_element(i, l, w, p):
         i ^= i >> 5
         if i < l:
             break
-    return (i + p) % l
+    # return (i + p) % l
+    #FIXME this might theoretically produce negative results?
+    return ((i + p) % l + l) % l
 
 @luisa.func
-def xxhash32_int4(p: int4):
+def xxhash32_int4(ps: int4):
+    p = make_uint4(ps) # workaround for py signed int...
     PRIME32_2 = 2246822519
     PRIME32_3 = 3266489917
     PRIME32_4 = 668265263
@@ -103,7 +105,8 @@ def make_pmj02bn_sampler(pixel, seed, spp, sample_index):
 def generate_1d(sampler):
     hash32 = xxhash32_int4(int4(sampler.pixel, sampler.dimension, sampler.seed))
     index = _permutation_element(sampler.sample_index, sampler.spp, sampler.w, hash32)
-    delta = _blue_noise(sampler.dimension, sampler.pixel)
+    delta = _blue_noise(sampler.dimension, sampler.pixel ^ sampler.seed)
+    # xor seed to change blue noise for each pixel when changing seed
     u = (index + delta) / sampler.spp
     sampler.dimension += 1
     return clamp(u, 0.0, one_minus_epsilon)
@@ -116,8 +119,8 @@ def generate_2d(sampler):
         hash32 = xxhash32_int4(int4(sampler.pixel, sampler.dimension, sampler.seed))
         index = _permutation_element(sampler.sample_index, sampler.spp, sampler.w, hash32)
     u = _pmj02bn_sample(pmj_instance, index) + make_float2(
-        _blue_noise(sampler.dimension, sampler.pixel),
-        _blue_noise(sampler.dimension+1, sampler.pixel)
+        _blue_noise(sampler.dimension, sampler.pixel ^ sampler.seed),
+        _blue_noise(sampler.dimension+1, sampler.pixel ^ sampler.seed)
     )
     sampler.dimension += 2
     return fract(u)
