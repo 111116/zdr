@@ -1,6 +1,8 @@
 import luisa
 from luisa.mathtypes import *
 from .camera import generate_ray, tent_warp
+from .pmj02bn import *
+from .corrmj import *
 
 
 def derive_render_kernel(integrator_func):
@@ -11,7 +13,9 @@ def derive_render_kernel(integrator_func):
         coord = dispatch_id().xy
         s = float3(0.0)
         for it in range(spp):
-            sampler = luisa.util.make_random_sampler3d(int3(int2(coord), seed^(it*5087)))
+            # sampler = make_corrmj_sampler(int2(coord), seed, spp, it)
+            # sampler = make_pmj02bn_sampler(int2(coord), seed, spp, it)
+            sampler = luisa.util.make_random_sampler3d(int3(int2(coord), seed^(it*987654347)))
             pixel_offset = sampler.next2f()
             if use_tent_filter:
                 pixel_offset = tent_warp(pixel_offset, 1.0) + float2(0.5)
@@ -34,7 +38,9 @@ def derive_render_backward_kernel(integrator_backward_func):
         if any(isnan(le_grad)):
             le_grad = float3(0.0)
         for it in range(spp):
-            sampler = luisa.util.make_random_sampler3d(int3(int2(coord), seed^(it*5087)))
+            # sampler = make_corrmj_sampler(int2(coord), seed, spp, it)
+            # sampler = make_pmj02bn_sampler(int2(coord), seed, spp, it)
+            sampler = luisa.util.make_random_sampler3d(int3(int2(coord), seed^(it*987654347)))
             pixel_offset = sampler.next2f()
             if use_tent_filter:
                 pixel_offset = tent_warp(pixel_offset, 1.0) + float2(0.5)
