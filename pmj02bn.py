@@ -1,5 +1,5 @@
-from bluenoise import *
-from pmj02tables import *
+from .bluenoise import *
+from .pmj02tables import *
 import luisa
 import torch
 from luisa.mathtypes import *
