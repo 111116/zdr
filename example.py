@@ -37,8 +37,8 @@ sphere_camera1 = Camera(
     up = float3(0.0, 1.0, 0.0)
 )
 
-scene = Scene(cbox_model, integrator='path')
-scene.camera = cbox_camera1
+scene = Scene(sphere_model, integrator='collocated')
+scene.camera = sphere_camera1
 
 diffuse_file = 'assets/wood_olive/wood_olive_wood_olive_basecolor.png'
 roughness_file = 'assets/wood_olive/wood_olive_wood_olive_roughness.png'
@@ -48,18 +48,24 @@ material_GT = load_material(diffuse_file, roughness_file)
 ImgRes = 1024, 1024
 print("Image resolution:", ImgRes)
 
-print("Forward", 64, 'spp:')
-for it in tqdm(range(50)):
-    Itmp = scene.render(material_GT, res=ImgRes, spp=64, seed=random.randint(0, 2147483647)) # seed defaults to 0
+# print("Forward", 64, 'spp:')
+# for it in tqdm(range(50)):
+#     Itmp = scene.render(material_GT, res=ImgRes, spp=64, seed=random.randint(0, 2147483647)) # seed defaults to 0
 
 I_GT = scene.render(material_GT, res=ImgRes, spp=256) # seed defaults to 0
 Image.fromarray((I_GT[...,0:3].clamp(min=0,max=1)**0.454*255).to(torch.uint8).cpu().numpy()).save('results/gt.png')
-quit()
+# quit()
 
 # duv/dxy (screen space to texture space jacobian)
-# duvdxy = scene.render_duvdxy(material_GT, res=ImgRes, spp=128) # seed defaults to 0
-# Image.fromarray(((duvdxy[...,0:3]*1000+0.5).clamp(min=0,max=1)**0.454*255).to(torch.uint8).cpu().numpy()).save('results/duvdx_dudy.png')
-# quit()
+duvdxy = scene.render_duvdxy(material_GT, res=ImgRes, spp=128) # seed defaults to 0
+Image.fromarray(((duvdxy[...,0:3]*1000+0.5).clamp(min=0,max=1)**0.454*255).to(torch.uint8).cpu().numpy()).save('results/duvdx_dudy.png')
+
+footprints = sum(torch.det(
+    scene.render_duvdxy(material_GT, res=ImgRes, spp=1, seed=f).reshape(*ImgRes,2,2)
+).abs()*1024*1024 for f in range(16))/16
+Image.fromarray((footprints.clamp(min=0, max=1)**0.454*255).to(torch.uint8).cpu().numpy()).save('results/footprints.png')
+
+quit()
 
 # ======== Optimization using differentiable rendering ========
 # Note that this is just an example, where scene.camera remains unchanged.

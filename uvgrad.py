@@ -1,6 +1,7 @@
 import luisa
 from luisa.mathtypes import *
 from .camera import generate_ray, tent_warp
+from .vertex import Vertex
 
 @luisa.func
 def compute_dpduv(p0, p1, p2, pt0, pt1, pt2):
@@ -15,20 +16,23 @@ def compute_dpduv(p0, p1, p2, pt0, pt1, pt2):
     return dpduv # [dpdu dpdv 0]
 
 @luisa.func
-def trace_duvdxy(ray, ray_dx, ray_dy, v_buffer, vt_buffer, triangle_buffer, accel):
+def trace_duvdxy(ray, ray_dx, ray_dy, heap, accel):
     hit = accel.trace_closest(ray, -1)
     if hit.miss():
         return float4(0.0)
-    i0 = triangle_buffer.read(hit.prim * 3 + 0)
-    i1 = triangle_buffer.read(hit.prim * 3 + 1)
-    i2 = triangle_buffer.read(hit.prim * 3 + 2)
-    p0 = v_buffer.read(i0)
-    p1 = v_buffer.read(i1)
-    p2 = v_buffer.read(i2)
+    i0 = heap.buffer_read(int, hit.inst * 2, hit.prim * 3 + 0)
+    i1 = heap.buffer_read(int, hit.inst * 2, hit.prim * 3 + 1)
+    i2 = heap.buffer_read(int, hit.inst * 2, hit.prim * 3 + 2)
+    v0 = heap.buffer_read(Vertex, hit.inst * 2 + 1, i0)
+    v1 = heap.buffer_read(Vertex, hit.inst * 2 + 1, i1)
+    v2 = heap.buffer_read(Vertex, hit.inst * 2 + 1, i2)
+    p0 = v0.v()
+    p1 = v1.v()
+    p2 = v2.v()
+    pt0 = v0.vt()
+    pt1 = v1.vt()
+    pt2 = v2.vt()
     p = hit.interpolate(p0, p1, p2)
-    pt0 = vt_buffer.read(i0)
-    pt1 = vt_buffer.read(i1)
-    pt2 = vt_buffer.read(i2)
     dpduv = compute_dpduv(p0, p1, p2, pt0, pt1, pt2)
     # use offset rays to compute finite difference of p
     ng = normalize(cross(p1 - p0, p2 - p0))
@@ -69,7 +73,7 @@ def trace_duvdxy(ray, ray_dx, ray_dy, v_buffer, vt_buffer, triangle_buffer, acce
 
 
 @luisa.func
-def render_uvgrad_kernel(image, v_buffer, vt_buffer, vn_buffer, triangle_buffer, accel, 
+def render_uvgrad_kernel(image, heap, accel, light_count,
                          material_buffer, texture_res, camera, spp, seed, use_tent_filter):
     resolution = dispatch_size().xy
     coord = dispatch_id().xy
@@ -85,8 +89,7 @@ def render_uvgrad_kernel(image, v_buffer, vt_buffer, vn_buffer, triangle_buffer,
         ray = generate_ray(camera, pixel)
         ray_dx = generate_ray(camera, pixel_dx)
         ray_dy = generate_ray(camera, pixel_dy)
-        uvgrad = trace_duvdxy(ray, ray_dx, ray_dy, v_buffer, vt_buffer,
-                            triangle_buffer, accel)
+        uvgrad = trace_duvdxy(ray, ray_dx, ray_dy, heap, accel)
         if not any(isnan(uvgrad)):
             s += uvgrad
     image.write(coord.x + coord.y * resolution.x, s/spp)

@@ -18,18 +18,20 @@ def load_material(diffuse_file, roughness_file):
     return mat.contiguous()
 
 obj_file = 'assets/sphere.obj'
-scene = Scene([(obj_file, 1, luisa.float3(0.0))], integrator='collocated')
+scene = Scene([(obj_file, None, 0), ('assets/lightstage/l00.obj', None, 100)], integrator='direct')
 diffuse_file = 'assets/wood_olive/wood_olive_wood_olive_basecolor_midres.png'
 roughness_file = 'assets/wood_olive/wood_olive_wood_olive_roughness_midres.png'
 material_GT = load_material(diffuse_file, roughness_file)
 
 ImgRes = 512, 512
-print("Image resolution:", ImgRes)
+spp = 256
 TexRes = material_GT.shape[0:2]
+print("Image resolution:", ImgRes)
 print("Texture resolution:", TexRes)
-spp = 8
 print("spp:", spp)
 
+
+print("Forward + backward:")
 # Benchmark forward + backward
 material = material_GT.clone().requires_grad_()
 for it in tqdm(range(1000)):
