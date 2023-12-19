@@ -2,13 +2,15 @@
 
 Simple raytracing differentiable renderer (w.r.t. material parameters). Images and parameters are both PyTorch tensors.
 
-Supports multiple objects / lights, but currently only one set of textures. Polymorphic material eval not implemented yet.
+Supports multiple objects / lights, but currently only one set of material. Polymorphic material eval not implemented yet.
 
 Integrators:
 
 - `collocated`: point light at position of the camera.
 
-- `direct`: light from emissive objects.
+- `direct`: Direct illumination from emissive objects.
+
+- `path`: Path tracing. Path Replay Backpropagation is used for differentiation.
 
 Current state:
 
