@@ -42,7 +42,7 @@ def read_obj(file_path):
                     # Split the vertex/tex_coords/normals
                     indices = part.split('/')
                     pos_idx = int(indices[0]) - 1
-                    tex_idx = int(indices[1]) - 1 if indices[1] else None
+                    tex_idx = int(indices[1]) - 1 if len(indices) > 1 and indices[1] else None
                     norm_idx = int(indices[2]) - 1 if len(indices) > 2 and indices[2] else None
                     vertex_data = (positions[pos_idx], 
                                    tex_coords[tex_idx] if tex_idx is not None else (0.0, 0.0), 

@@ -82,6 +82,8 @@ class Scene:
                 transform = luisa.float4x4(1.0)
             if emission is None:
                 emission = float3(0.0)
+            elif type(emission) in {int, float}:
+                emission = float3(emission)
             if emission.x>0 or emission.y>0 or emission.z>0:
                 light_insts.append(idx)
             inst_metadata.append(emission)
@@ -109,11 +111,14 @@ class Scene:
         self.inst_count = idx + 1
         if self.inst_count > 10000:
             raise RuntimeError('exceeding maximum number of mesh instances')
+        # light info
         self.light_count = len(light_insts)
+        self.inst_metadata_buffer = luisa.buffer(inst_metadata)
+        self.light_insts_buffer = luisa.buffer(light_insts + [0]*(self.inst_count - self.light_count))
         # put auxiliary buffers into bindless array
-        self.heap.emplace(23333, luisa.buffer(inst_metadata))
+        self.heap.emplace(23333, self.inst_metadata_buffer)
         if self.light_count > 0:
-            self.heap.emplace(23334, luisa.buffer(light_insts))
+            self.heap.emplace(23334, self.light_insts_buffer)
         self.heap.emplace(23335, luisa.buffer(inst_trig_count))
         self.accel.update()
         self.heap.update()
@@ -129,8 +134,13 @@ class Scene:
 
         """
         assert len(emissions) == self.inst_count
-        # TODO update emission of each object in inst_metadata & rewrite light_insts
-        raise NotImplementedError()
+        emissions = [float3(0) if x is None else float3(x) if type(x) in {int, float} else x for x in emissions]
+        # update emission of each object in inst_metadata & rewrite light_insts
+        inst_metadata = emissions
+        self.inst_metadata_buffer.copy_from(inst_metadata)
+        light_insts = [i for i,x in enumerate(emissions) if x.x>0 or x.y>0 or x.z>0]
+        self.light_count = len(light_insts)
+        self.light_insts_buffer.copy_from(light_insts + [0]*(self.inst_count - self.light_count))
 
     def render_forward(self, material, res, spp, seed, kernel=None):
         assert material.ndim == 3 and material.shape[2] == 4
