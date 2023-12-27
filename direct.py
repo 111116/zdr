@@ -21,11 +21,10 @@ def direct_estimator(ray, sampler, heap, accel, light_count, material_buffer, te
     hit = accel.trace_closest(ray, -1)
     if hit.miss():
         return float3(0.0)
-    return float3(0,0,1)
     it = surface_interact(hit, heap, accel)
     # backfacing geometry
     if dot(-ray.get_dir(), it.ng) < 1e-4 or dot(-ray.get_dir(), it.ns) < 1e-4:
-        return float3(1.0,0.0,0.0) # TODO DEBUG
+        return float3(0.0)
     emission = heap.buffer_read(float3, 23333, hit.inst)
     if hit.inst > 0: # treat everything as light other than the first object
     # if any(emission > float3(0.0)):
