@@ -24,7 +24,7 @@ def derive_render_kernel(integrator_func):
             radiance = integrator_func(ray, sampler, heap, accel, light_count,
                                        material_buffer, texture_res)
             if not any(isnan(radiance)):
-                s += radiance
+                s += clamp(radiance, 0.0, 100.0)
         image.write(coord.x + coord.y * resolution.x, float4(s/spp, 1.0))
     return _kernel
 
