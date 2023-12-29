@@ -24,7 +24,8 @@ def surface_interact(hit, heap, accel):
     it.p = hit.interpolate(p0, p1, p2)
     it.uv = hit.interpolate(v0.vt(), v1.vt(), v2.vt())
     ns0 = hit.interpolate(v0.vn(), v1.vn(), v2.vn())
-    it.ns = normalize(inverse(transpose(make_float3x3(transform))) * ns0)
+    # it.ns = normalize(inverse(transpose(make_float3x3(transform))) * ns0)
+    it.ns = normalize(inverse(transpose(make_float3x3(transform[0].xyz, transform[1].xyz, transform[2].xyz))) * ns0)
     it.ng = normalize(cross(p1 - p0, p2 - p0))
     return it
 
