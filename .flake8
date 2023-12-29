@@ -1,0 +1,4 @@
+[flake8]
+exclude = 
+    bluenoise.py,
+    pmj02tables.py
