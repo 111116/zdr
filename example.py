@@ -18,11 +18,11 @@ def load_material(diffuse_file, roughness_file):
     return mat.contiguous()
 
 cbox_model = [
-    ('assets/cboxuv.obj', 1, float3(0.0)),
-    ('assets/cbox-light.obj', 0, float3(17, 12, 4))
+    ('assets/cboxuv.obj', None, float3(0.0)),
+    ('assets/cbox-light.obj', None, float3(17, 12, 4))
 ]
 sphere_model = [
-    ('assets/sphere.obj', 1, float3(0.0)),
+    ('assets/sphere.obj', None, float3(0.0)),
 ]
 cbox_camera1 = Camera(
     fov = 50 / 180 * 3.1415926,
@@ -65,7 +65,7 @@ footprints = sum(torch.det(
 ).abs()*1024*1024 for f in range(16))/16
 Image.fromarray((footprints.clamp(min=0, max=1)**0.454*255).to(torch.uint8).cpu().numpy()).save('results/footprints.png')
 
-quit()
+# quit()
 
 # ======== Optimization using differentiable rendering ========
 # Note that this is just an example, where scene.camera remains unchanged.

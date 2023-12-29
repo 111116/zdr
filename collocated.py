@@ -12,7 +12,7 @@ def collocated_estimator(ray, sampler, heap, accel, light_count, material_buffer
     hit = accel.trace_closest(ray, -1)
     if hit.miss():
         return float3(0.0)
-    it = surface_interact(hit, heap)
+    it = surface_interact(hit, heap, accel)
     if dot(-ray.get_dir(), it.ng) < 1e-4 or dot(-ray.get_dir(), it.ns) < 1e-4:
         return float3(0.0)
     mat = read_bsdf(it.uv, material_buffer, texture_res)
@@ -33,7 +33,7 @@ def collocated_estimator_backward(ray, sampler, heap, accel, light_count,
     hit = accel.trace_closest(ray, -1)
     if hit.miss():
         return
-    it = surface_interact(hit, heap)
+    it = surface_interact(hit, heap, accel)
     if dot(-ray.get_dir(), it.ng) < 1e-4 or dot(-ray.get_dir(), it.ns) < 1e-4:
         return
     mat = read_bsdf(it.uv, material_buffer, texture_res)
