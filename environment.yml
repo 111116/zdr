@@ -1,0 +1,15 @@
+name: myenv
+channels:
+  - defaults
+  - pytorch
+dependencies:
+  - python>=3.10  # or any specific version you require
+  - numpy
+  - pip
+  - cudatoolkit=12.3  # specify the CUDA version compatible with your PyTorch version
+  - pytorch  # This will install the latest version compatible with the CUDA toolkit above
+  - torchvision  # if needed
+  - torchaudio  # if needed
+  - pip:
+    - luisa-python  # This will install the latest version from PyPI
+
