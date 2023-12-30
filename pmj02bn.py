@@ -5,7 +5,7 @@ import torch
 from luisa.mathtypes import *
 
 
-luisa.init() # doesn't do anything if it's already initialized
+luisa.init('cuda') # doesn't do anything if it's already initialized
 PMJ02bnSamples_torch = (torch.tensor(PMJ02bnSamples)/2**32).to(torch.float32).cuda()
 assert PMJ02bnSamples_torch.shape == (nPMJ02bnSets, nPMJ02bnSamples, 2)
 PMJ02bnSamples_buffer = luisa.Buffer.from_dlpack(PMJ02bnSamples_torch.reshape(-1,2))

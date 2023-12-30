@@ -76,7 +76,7 @@ print("Texture resolution:", TexRes)
 material = torch.rand((*TexRes,4), device='cuda')
 material.requires_grad_()
 optimizer = torch.optim.Adam([material], lr=0.01)
-for it in tqdm(range(2000)):
+for it in tqdm(range(500)):
     I = scene.render(material, res=ImgRes, spp=4, seed=random.randint(0, 2147483647))
     ((I-I_GT)**2).sum().backward()
     optimizer.step()
