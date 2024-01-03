@@ -113,6 +113,7 @@ class Scene:
             raise RuntimeError('exceeding maximum number of mesh instances')
         # light info
         self.light_count = len(light_insts)
+        self.emissions = inst_metadata
         self.inst_metadata_buffer = luisa.buffer(inst_metadata)
         self.light_insts_buffer = luisa.buffer(light_insts + [0]*(self.inst_count - self.light_count))
         # put auxiliary buffers into bindless array
@@ -133,6 +134,7 @@ class Scene:
             emissions (list of float3): emission color of each object
 
         """
+        self.emissions = emissions # for record
         assert len(emissions) == self.inst_count
         emissions = [float3(0) if x is None else float3(x) if type(x) in {int, float} else x for x in emissions]
         # update emission of each object in inst_metadata & rewrite light_insts
@@ -190,6 +192,7 @@ class Scene:
             ctx.scene = weakref.ref(self)
             ctx.args = args
             ctx.camera = self.camera
+            ctx.emissions = self.emissions
             return self.render_forward(material.detach(), *args)
 
         @staticmethod
@@ -199,6 +202,7 @@ class Scene:
             # workaround: save and load camera state
             camera_bak = ctx.scene().camera
             ctx.scene().camera = ctx.camera
+            ctx.scene().update_lights(ctx.emissions)
             material, = ctx.saved_tensors
             mat_grad = torch.zeros(material.size(), dtype=material.dtype, device=material.device)
             grads = ctx.scene().render_backward(grad_output, mat_grad, material.detach(), *ctx.args)

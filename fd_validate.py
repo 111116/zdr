@@ -19,8 +19,8 @@ def load_material(diffuse_file, roughness_file):
 
 
 cbox_model = [
-    ('assets/cboxuv.obj', 1, float3(0.0)),
-    ('assets/cbox-light.obj', 0, float3(20.0))
+    ('assets/cboxuv.obj', None, float3(0.0)),
+    ('assets/cbox-light.obj', None, float3(20.0))
 ]
 sphere_model = [
     ('assets/sphere.obj', 1, float3(0.0)),
