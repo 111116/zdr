@@ -93,6 +93,7 @@ def _next_lcg(sampler):
 
 @luisa.func
 def generate_1d(sampler):
+    """Generate a 1D sample in [0, 1)"""
     perm_seed = sampler.permutation_seed + sampler.dimension
     index = _permutation_element(sampler.sample_index, sampler.spp, sampler.w, (perm_seed * 0x45fbe943) & 0x70ffffff)
     delta = _next_lcg(sampler)
@@ -102,6 +103,7 @@ def generate_1d(sampler):
 
 @luisa.func
 def generate_2d(sampler):
+    """Generate a 2D sample in [0, 1)"""
     perm_seed = sampler.permutation_seed + sampler.dimension
     index = _permutation_element(sampler.sample_index, sampler.spp, sampler.w, (perm_seed * 0x51633e2d) & 0x70ffffff)
     y = index // sampler.res
