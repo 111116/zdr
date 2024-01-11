@@ -6,12 +6,12 @@ from .integrator import derive_render_kernel, derive_render_backward_kernel
 from .interaction import read_bsdf, write_bsdf_grad, surface_interact
 from .light import sample_light, sample_light_pdf
 from .onb import *
-from .envmap import direction_to_uv, uv_to_direction
+from .envmap import direction_to_uv, uv_to_direction, env_sampled_light_pdf
 
 # MIS off: Only draw light samples. Good for small lights.
 # MIS on: Draw light & bsdf samples, at cost of ~2.6x computation.
 #         Useful for large lights / glossy surfaces.
-use_MIS = False
+use_MIS = True
 
 @luisa.func
 def balanced_heuristic(pdf_a, pdf_b):
@@ -23,7 +23,7 @@ def direct_estimator(ray, sampler, heap, accel, light_count, material_buffer, te
     if hit.miss():
         envmap_uv = direction_to_uv(ray.get_dir())
         return heap.texture2d_sample(23332, envmap_uv).xyz
-        return float3(0.0)
+        return float3(0.0) # TODO: envmap?
     it = surface_interact(hit, heap, accel)
     # backfacing geometry
     if dot(-ray.get_dir(), it.ng) < 1e-4 or dot(-ray.get_dir(), it.ns) < 1e-4:
@@ -79,9 +79,11 @@ def direct_estimator(ray, sampler, heap, accel, light_count, material_buffer, te
                 return radiance
             emission = heap.buffer_read(float3, 23333, hit.inst)
         if any(emission > float3(0.0)):
-            pdf_light = sample_light_pdf(origin, light_count, heap, accel, hit.inst, hit.prim, it.p)
+            if hit.miss():
+                pdf_light = env_sampled_light_pdf(heap, ray.get_dir())
+            else:
+                pdf_light = sample_light_pdf(origin, light_count, heap, accel, hit.inst, hit.prim, it.p)
             mis_weight = balanced_heuristic(pdf_bsdf, pdf_light)
-            mis_weight = 1.0 # TODO
             return radiance + beta * mis_weight * emission
 
     return radiance

@@ -226,11 +226,6 @@ def sample_envmap(heap, u: float2):
     uv = float2(sx.index + sx.u, sy.index + sy.u) / float2(sample_map_size)
     index = sy.index * sample_map_size.x + sx.index
     pdf = heap.buffer_read(float, 23331, index)
-
-    # uv = u
-    # pdf = 1.0
-    
-
     t = LightSampleStruct()
     t.wi = uv_to_direction(uv)
     t.dist = 1e30
@@ -240,6 +235,15 @@ def sample_envmap(heap, u: float2):
     t.eval = heap.texture2d_sample(23332, uv).xyz
     return t
 
+@luisa.func
+def env_sampled_light_pdf(heap, dir: float3):
+    uv = direction_to_uv(dir)
+    index = clamp(int(uv.y * sample_map_size.y), 0, sample_map_size.y-1) * sample_map_size.x + \
+            clamp(int(uv.x * sample_map_size.x), 0, sample_map_size.x-1)
+    pdf = heap.buffer_read(float, 23331, index)
+    s = sin(pi * uv.y)
+    inv_s = 1.0/s if s>0 else 0.0
+    return pdf * inv_s / (2 * pi * pi)
 
 
 # luisa.init()
