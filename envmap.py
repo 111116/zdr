@@ -3,6 +3,7 @@ from luisa.mathtypes import *
 from math import pi
 import numpy as np
 import imageio
+from .light import LightSampleStruct
 
 
 compensate_mis = False
@@ -54,9 +55,13 @@ def create_alias_table(values):
         table[i] = AliasEntry(prob=1.0, alias=i)
     return table, pdf
 
+AliasTableSample = luisa.StructType(
+    index=int,
+    u=float
+)
 
 @luisa.func
-def sample_alias_table(table, n, u_in, offset=0):
+def sample_alias_table(table, n, u_in, offset):
     """
     Args:
         table: luisa.buffer of AliasEntry.
@@ -74,13 +79,40 @@ def sample_alias_table(table, n, u_in, offset=0):
     entry = table.read(i + offset)
     index = i if u_remapped < entry.prob else entry.alias
     uu = u_remapped / entry.prob if u_remapped < entry.prob else (u_remapped - entry.prob) / (1.0 - entry.prob)
-    return index, uu
+    return AliasTableSample(index=index, u=uu)
+
+
+@luisa.func
+def sample_alias_table_bindless(heap, bufidx, n, u_in, offset):
+    """
+    Args:
+        table: luisa.buffer of AliasEntry.
+        n: Length of the table.
+        u_in: A random number in [0, 1).
+        offset: Offset of the table.
+    Returns:
+        A tuple of (index, u), where index is the sampled index, and
+        u is the remapped random number in [0, 1).
+        TODO tuple is not supported yet
+    """
+    u = u_in * n
+    i = clamp(int(u), 0, n - 1)
+    u_remapped = fract(u)
+    entry = heap.buffer_read(AliasEntry, bufidx, i + offset)
+    index = i if u_remapped < entry.prob else entry.alias
+    uu = u_remapped / entry.prob if u_remapped < entry.prob else (u_remapped - entry.prob) / (1.0 - entry.prob)
+    t = AliasTableSample()
+    t.index = index
+    t.u = uu
+    return t
 
 
 @luisa.func
 def rgb_to_cie_y(rgb: float3):
     return 0.212671 * rgb.x + 0.715160 * rgb.y + 0.072169 * rgb.z
 
+
+sample_map_size = int2(512, 256)
 
 def load_envmap(heap, img):
     """Load environment map from image.
@@ -101,7 +133,6 @@ def load_envmap(heap, img):
     heap.update()
 
     # prepare sample map
-    sample_map_size = int2(1024, 512)
     pixel_count = sample_map_size.x * sample_map_size.y
     scale_map_buffer = luisa.Buffer(pixel_count, dtype=float)
     @luisa.func
@@ -165,12 +196,10 @@ def load_envmap(heap, img):
     pdf_buffer = luisa.Buffer.from_array(np.array(pdfs, dtype=np.float32))
     heap.emplace(23330, alias_buffer)
     heap.emplace(23331, pdf_buffer)
+    heap.update()
+    print("load envmap done.")
     # luisa.synchronize()
     
-
-@luisa.func
-def sample_envmap(envmap, u):
-    pass
 
 @luisa.func
 def uv_to_direction(uv: float2):
@@ -180,13 +209,37 @@ def uv_to_direction(uv: float2):
     sin_theta = sin(theta)
     x = sin(phi) * sin_theta
     z = cos(phi) * sin_theta
-    return theta, phi, normalize(float3(x, y, z))
+    return normalize(float3(x, y, z))
 
 @luisa.func
 def direction_to_uv(dir: float3):
     theta = acos(dir.y)
     phi = atan2(dir.x, dir.z)
     return make_float2(1 - phi / (2 * pi), theta / pi)
+
+
+@luisa.func
+def sample_envmap(heap, u: float2):
+    sy = sample_alias_table_bindless(heap, 23330, sample_map_size.y, u.y, 0)
+    offset = sample_map_size.y + sy.index * sample_map_size.x
+    sx = sample_alias_table_bindless(heap, 23330, sample_map_size.x, u.x, offset)
+    uv = float2(sx.index + sx.u, sy.index + sy.u) / float2(sample_map_size)
+    index = sy.index * sample_map_size.x + sx.index
+    pdf = heap.buffer_read(float, 23331, index)
+
+    # uv = u
+    # pdf = 1.0
+    
+
+    t = LightSampleStruct()
+    t.wi = uv_to_direction(uv)
+    t.dist = 1e30
+    s = sin(pi * uv.y)
+    inv_s = 1.0/s if s>0 else 0.0
+    t.pdf = pdf * inv_s / (2 * pi * pi)
+    t.eval = heap.texture2d_sample(23332, uv).xyz
+    return t
+
 
 
 # luisa.init()

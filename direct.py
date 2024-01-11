@@ -11,7 +11,7 @@ from .envmap import direction_to_uv, uv_to_direction
 # MIS off: Only draw light samples. Good for small lights.
 # MIS on: Draw light & bsdf samples, at cost of ~2.6x computation.
 #         Useful for large lights / glossy surfaces.
-use_MIS = True
+use_MIS = False
 
 @luisa.func
 def balanced_heuristic(pdf_a, pdf_b):
@@ -41,21 +41,21 @@ def direct_estimator(ray, sampler, heap, accel, light_count, material_buffer, te
 
     # direct light sample
     radiance = float3(0.0)
-    # light = sample_light(it.p, light_count, heap, accel, sampler) # (wi, dist, pdf, eval)
-    # shadow_ray = luisa.make_ray(it.p, light.wi, 1e-4, light.dist)
-    # occluded = accel.trace_any(shadow_ray, -1)
+    light = sample_light(it.p, light_count, heap, accel, sampler) # (wi, dist, pdf, eval)
+    shadow_ray = luisa.make_ray(it.p, light.wi, 1e-4, light.dist)
+    occluded = accel.trace_any(shadow_ray, -1)
     onb = make_onb(it.ns)
     wo_local = onb.to_local(-ray.get_dir())
-    # wi_light_local = onb.to_local(light.wi)
-    # # Discard light from back face due to imperfect occlusion / non-manifolds
-    # if not occluded and wi_light_local.z > 0.0:
-    #     bsdf = ggx_brdf(wo_local, wi_light_local, diffuse, specular, roughness)
-    #     if use_MIS:
-    #         pdf_bsdf = ggx_sample_pdf(wo_local, wi_light_local, diffuse, specular, roughness)
-    #         mis_weight = balanced_heuristic(light.pdf, pdf_bsdf)
-    #     else:
-    #         mis_weight = 1.0
-    #     radiance += bsdf * mis_weight * light.eval / max(light.pdf, 1e-4)
+    wi_light_local = onb.to_local(light.wi)
+    # Discard light from back face due to imperfect occlusion / non-manifolds
+    if not occluded and wi_light_local.z > 0.0:
+        bsdf = ggx_brdf(wo_local, wi_light_local, diffuse, specular, roughness)
+        if use_MIS:
+            pdf_bsdf = ggx_sample_pdf(wo_local, wi_light_local, diffuse, specular, roughness)
+            mis_weight = balanced_heuristic(light.pdf, pdf_bsdf)
+        else:
+            mis_weight = 1.0
+        radiance += bsdf * mis_weight * light.eval / max(light.pdf, 1e-4)
 
     if use_MIS:
         # pdf sample (next bounce)

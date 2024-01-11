@@ -4,12 +4,14 @@ from .vertex import Vertex
 
 point_light_array = luisa.array([luisa.struct(p=float3(-0.2, 5, -3), intensity=float3(10.0))])
 # point_light_count = len(point_light_array) # TODO
+env_light_count = 1
 point_light_count = 0
 # env_prob = 0.3 # no environment light yet
 
 # make struct in kernel doesn't work now, so workaround:
 LightSampleStruct = luisa.StructType(wi=float3, dist=float, pdf=float, eval=float3)
 
+from .envmap import sample_envmap
 
 @luisa.func
 def sample_uniform_triangle(u: float2):
@@ -22,11 +24,15 @@ def sample_uniform_triangle(u: float2):
 def sample_light(origin, light_count, heap, accel, sampler):
     u = sampler.next()
     mesh_light_count = light_count
-    n = point_light_count + mesh_light_count
+    n = env_light_count + point_light_count + mesh_light_count
     # TODO clean up code & put point light source from scene
     idx = clamp(int(u * n), 0, n-1)
-    if idx < point_light_count:
+    if idx < env_light_count:
+        # sample from environment light
+        return sample_envmap(heap, sampler.next2f())
+    elif idx < env_light_count + point_light_count:
         # sample from point light sources
+        idx -= env_light_count
         pointlight = point_light_array[idx]
         sqr_dist = length_squared(pointlight.p - origin)
         wi_light = normalize(pointlight.p - origin)
@@ -39,7 +45,7 @@ def sample_light(origin, light_count, heap, accel, sampler):
         return t
     else:
         # sample from mesh light sources
-        idx -= point_light_count
+        idx -= env_light_count + point_light_count
         inst = heap.buffer_read(int, 23334, idx)
         trig_count = heap.buffer_read(int, 23335, inst)
         prim = clamp(int(sampler.next() * trig_count), 0, trig_count-1)
