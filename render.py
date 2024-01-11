@@ -4,11 +4,12 @@ Currently only supports collocated direct lighting.
 
 """
 import torch
-import numpy
+import numpy as np
 import math
 import luisa
 from luisa.mathtypes import *
 import weakref
+import imageio
 
 # import gc
 
@@ -19,6 +20,7 @@ from .collocated import render_collocated_kernel, render_collocated_backward_ker
 from .direct import render_direct_kernel, render_direct_backward_kernel
 from .prb import render_path_kernel, render_path_backward_kernel
 from .vertex import Vertex
+from .envmap import load_envmap
 
 # Using CUDA for interaction with PyTorch
 luisa.init('cuda')
@@ -58,8 +60,8 @@ class Scene:
             target = float3(0.0, 0.0, 0.0),
             up = float3(0.0, 1.0, 0.0)
         )
-        if integrator != 'collocated' and self.light_count == 0:
-            raise RuntimeError("No light source detected!")
+        # if integrator != 'collocated' and self.light_count == 0:
+        #     raise RuntimeError("No light source detected!")
         integrators = {
             "path": (render_path_kernel, render_path_backward_kernel),
             "direct": (render_direct_kernel, render_direct_backward_kernel),
@@ -92,7 +94,7 @@ class Scene:
                 if obj_file not in self.loaded_obj:
                     vertices, faces = read_obj(obj_file)
                     vertex_buffer = luisa.Buffer(dtype=Vertex, size=len(vertices))
-                    vertex_buffer.copy_from_array(numpy.array([(*v,*t,*n) for v,t,n in vertices], dtype=numpy.float32))
+                    vertex_buffer.copy_from_array(np.array([(*v,*t,*n) for v,t,n in vertices], dtype=np.float32))
                     triangles = concat_triangles(faces)
                     triangle_buffer = luisa.buffer(triangles)
                     # recompute if vertex normal isn't available
@@ -143,6 +145,15 @@ class Scene:
         light_insts = [i for i,x in enumerate(emissions) if x.x>0 or x.y>0 or x.z>0]
         self.light_count = len(light_insts)
         self.light_insts_buffer.copy_from(light_insts + [0]*(self.inst_count - self.light_count))
+    
+    def add_envmap(self, filename):
+        img = np.asarray(imageio.imread(filename))
+        if img.shape[2] == 3:
+            # convert RGB to RGBA
+            img = np.concatenate([img, np.ones_like(img[..., :1])], axis=-1)
+        load_envmap(self.heap, img)
+        
+
 
     def render_forward(self, material, res, spp, seed, kernel=None):
         assert material.ndim == 3 and material.shape[2] == 4

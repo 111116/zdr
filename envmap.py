@@ -99,20 +99,9 @@ def load_envmap(heap, img):
     tex = luisa.image2d(img)
     heap.emplace(23332, tex) # default filter & address mode
     heap.update()
-    # debug
-    # @luisa.func
-    # def debug_kernel():
-    #     coord = dispatch_id().xy
-    #     uv = dispatch_id().xy / dispatch_size().xy
-    #     print(uv, 'sampled', heap.texture2d_sample(23332, uv))
-    #     print(uv, 'read', tex.read(coord))
-    # debug_kernel(dispatch_size=(4,2))
-    # luisa.synchronize()
-    # quit()
-
 
     # prepare sample map
-    sample_map_size = int2(2048, 1024)
+    sample_map_size = int2(1024, 512)
     pixel_count = sample_map_size.x * sample_map_size.y
     scale_map_buffer = luisa.Buffer(pixel_count, dtype=float)
     @luisa.func
@@ -155,7 +144,8 @@ def load_envmap(heap, img):
     row_averages = []
     pdfs = []
     aliases = []
-    print(3)
+    print("loading envmap...")
+    # TODO speed up create alias table
     # construct marginal alias table p(x|y)
     for i in range(sample_map_size.y):
         row = scale_map[i * sample_map_size.x : (i+1) * sample_map_size.x]
@@ -163,7 +153,6 @@ def load_envmap(heap, img):
         alias_table, pdf_table = create_alias_table(row)
         pdfs.extend(pdf_table)
         aliases.extend(alias_table)
-    print(2)
     # construct marginal alias table p(y)
     alias_table, pdf_table = create_alias_table(row_averages)
     aliases = alias_table + aliases
@@ -171,14 +160,13 @@ def load_envmap(heap, img):
         for x in range(sample_map_size.x):
             pdfs[y * sample_map_size.x + x] *= pdf_table[y] * pixel_count
     # upload alias table
-    # alias_buffer = luisa.Buffer.from_array(np.array(aliases, dtype=np.float32))
-    print(1)
+    # TODO speed up upload alias table
     alias_buffer = luisa.buffer(aliases)
-    print(1)
     pdf_buffer = luisa.Buffer.from_array(np.array(pdfs, dtype=np.float32))
-    luisa.synchronize()
+    heap.emplace(23330, alias_buffer)
+    heap.emplace(23331, pdf_buffer)
+    # luisa.synchronize()
     
-
 
 @luisa.func
 def sample_envmap(envmap, u):
@@ -194,12 +182,18 @@ def uv_to_direction(uv: float2):
     z = cos(phi) * sin_theta
     return theta, phi, normalize(float3(x, y, z))
 
+@luisa.func
+def direction_to_uv(dir: float3):
+    theta = acos(dir.y)
+    phi = atan2(dir.x, dir.z)
+    return make_float2(1 - phi / (2 * pi), theta / pi)
 
-luisa.init()
-img = imageio.imread('assets/empty_workshop_4k.exr')
-# convert from 3 channel to 4 channel
-img = np.concatenate([img, np.ones_like(img[..., :1])], axis=-1)
-print(img.shape)
-tmpheap = luisa.BindlessArray()
-load_envmap(tmpheap, np.asarray(img[0:2048, 0:4096]).astype(np.float32))
+
+# luisa.init()
+# img = imageio.imread('assets/empty_workshop_4k.exr')
+# # convert from 3 channel to 4 channel
+# img = np.concatenate([img, np.ones_like(img[..., :1])], axis=-1)
+# print(img.shape)
+# tmpheap = luisa.BindlessArray()
+# load_envmap(tmpheap, np.asarray(img[0:2048, 0:4096]).astype(np.float32))
 

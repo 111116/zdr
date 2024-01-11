@@ -6,11 +6,12 @@ from .integrator import derive_render_kernel, derive_render_backward_kernel
 from .interaction import read_bsdf, write_bsdf_grad, surface_interact
 from .light import sample_light, sample_light_pdf
 from .onb import *
+from .envmap import direction_to_uv, uv_to_direction
 
 # MIS off: Only draw light samples. Good for small lights.
 # MIS on: Draw light & bsdf samples, at cost of ~2.6x computation.
 #         Useful for large lights / glossy surfaces.
-use_MIS = False
+use_MIS = True
 
 @luisa.func
 def balanced_heuristic(pdf_a, pdf_b):
@@ -20,6 +21,8 @@ def balanced_heuristic(pdf_a, pdf_b):
 def direct_estimator(ray, sampler, heap, accel, light_count, material_buffer, texture_res):
     hit = accel.trace_closest(ray, -1)
     if hit.miss():
+        envmap_uv = direction_to_uv(ray.get_dir())
+        return heap.texture2d_sample(23332, envmap_uv).xyz
         return float3(0.0)
     it = surface_interact(hit, heap, accel)
     # backfacing geometry
@@ -38,21 +41,21 @@ def direct_estimator(ray, sampler, heap, accel, light_count, material_buffer, te
 
     # direct light sample
     radiance = float3(0.0)
-    light = sample_light(it.p, light_count, heap, accel, sampler) # (wi, dist, pdf, eval)
-    shadow_ray = luisa.make_ray(it.p, light.wi, 1e-4, light.dist)
-    occluded = accel.trace_any(shadow_ray, -1)
+    # light = sample_light(it.p, light_count, heap, accel, sampler) # (wi, dist, pdf, eval)
+    # shadow_ray = luisa.make_ray(it.p, light.wi, 1e-4, light.dist)
+    # occluded = accel.trace_any(shadow_ray, -1)
     onb = make_onb(it.ns)
     wo_local = onb.to_local(-ray.get_dir())
-    wi_light_local = onb.to_local(light.wi)
-    # Discard light from back face due to imperfect occlusion / non-manifolds
-    if not occluded and wi_light_local.z > 0.0:
-        bsdf = ggx_brdf(wo_local, wi_light_local, diffuse, specular, roughness)
-        if use_MIS:
-            pdf_bsdf = ggx_sample_pdf(wo_local, wi_light_local, diffuse, specular, roughness)
-            mis_weight = balanced_heuristic(light.pdf, pdf_bsdf)
-        else:
-            mis_weight = 1.0
-        radiance += bsdf * mis_weight * light.eval / max(light.pdf, 1e-4)
+    # wi_light_local = onb.to_local(light.wi)
+    # # Discard light from back face due to imperfect occlusion / non-manifolds
+    # if not occluded and wi_light_local.z > 0.0:
+    #     bsdf = ggx_brdf(wo_local, wi_light_local, diffuse, specular, roughness)
+    #     if use_MIS:
+    #         pdf_bsdf = ggx_sample_pdf(wo_local, wi_light_local, diffuse, specular, roughness)
+    #         mis_weight = balanced_heuristic(light.pdf, pdf_bsdf)
+    #     else:
+    #         mis_weight = 1.0
+    #     radiance += bsdf * mis_weight * light.eval / max(light.pdf, 1e-4)
 
     if use_MIS:
         # pdf sample (next bounce)
@@ -67,15 +70,18 @@ def direct_estimator(ray, sampler, heap, accel, light_count, material_buffer, te
         origin = it.p
         hit = accel.trace_closest(ray, -1)
         if hit.miss():
-            return radiance
-        it = surface_interact(hit, heap, accel)
-        # backfacing geometry
-        if dot(-ray.get_dir(), it.ng) < 1e-4 or dot(-ray.get_dir(), it.ns) < 1e-4:
-            return radiance
-        emission = heap.buffer_read(float3, 23333, hit.inst)
+            # return radiance
+            emission = heap.texture2d_sample(23332, direction_to_uv(ray.get_dir())).xyz
+        else:
+            it = surface_interact(hit, heap, accel)
+            # backfacing geometry
+            if dot(-ray.get_dir(), it.ng) < 1e-4 or dot(-ray.get_dir(), it.ns) < 1e-4:
+                return radiance
+            emission = heap.buffer_read(float3, 23333, hit.inst)
         if any(emission > float3(0.0)):
             pdf_light = sample_light_pdf(origin, light_count, heap, accel, hit.inst, hit.prim, it.p)
             mis_weight = balanced_heuristic(pdf_bsdf, pdf_light)
+            mis_weight = 1.0 # TODO
             return radiance + beta * mis_weight * emission
 
     return radiance
