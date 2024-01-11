@@ -1,12 +1,13 @@
 import luisa
 from luisa.mathtypes import *
+import math
 from math import pi
 import numpy as np
 import imageio
 from .light import LightSampleStruct
 
 
-compensate_mis = False
+compensate_mis = True
 
 AliasEntry = luisa.StructType(
     prob=float,
@@ -29,7 +30,7 @@ def create_alias_table(values):
         pdf = [1.0 / n] * n
     else:
         pdf = [abs(v) / sum for v in values]
-    ratio = len(values) / sum
+    ratio = len(values) / sum if sum > 0.0 else 1.0
     over = []
     under = []
     table = []
@@ -151,7 +152,7 @@ def load_envmap(heap, img):
                 # print(uv, 'sampled', heap.texture2d_sample(23332, uv))
                 scale = rgb_to_cie_y(heap.texture2d_sample(23332, uv).xyz)
                 sin_theta = sin(uv.y * pi)
-                weight = exp(-4.0 * length_squared(offset))
+                weight = exp(-4.0 * length_squared(offset)) # gaussian filter
                 value = weight * min(scale * sin_theta, 1e8)
                 sum_weight += weight
                 sum_scale += value
@@ -167,10 +168,19 @@ def load_envmap(heap, img):
 
     # compensate mis
     if compensate_mis:
-        raise NotImplementedError('compensate_mis')
-        # FIXME should be equal area projection
-        average_scale = scale_map.mean()
-        scale_map = (scale_map - average_scale).clip(a_min=0.0)
+        scale_sum = 0.0
+        scale_weight = 0.0
+        for y in range(sample_map_size.y):
+            row_weight = math.sin((y + 0.5) / sample_map_size.y * pi)
+            row_mean = scale_map[y * sample_map_size.x : (y+1) * sample_map_size.x].mean()
+            scale_sum += row_weight * row_mean
+            scale_weight += row_weight
+        average_scale = scale_sum / scale_weight
+        for y in range(sample_map_size.y):
+            row_weight = math.sin((y + 0.5) / sample_map_size.y * pi)
+            scale_map[y * sample_map_size.x : (y+1) * sample_map_size.x] -= \
+                average_scale * row_weight
+        scale_map = np.maximum(scale_map, 0.0)
     # construct conditional alias table
     row_averages = []
     pdfs = []
