@@ -168,18 +168,13 @@ def load_envmap(heap, img):
 
     # compensate mis
     if compensate_mis:
-        scale_sum = 0.0
-        scale_weight = 0.0
+        def row_weight(y):
+            return math.sin((y + 0.5) / sample_map_size.y * pi)
+        average_scale = scale_map.mean()
+        weight_average = np.array([row_weight(y) for y in range(sample_map_size.y)]).mean()
         for y in range(sample_map_size.y):
-            row_weight = math.sin((y + 0.5) / sample_map_size.y * pi)
-            row_mean = scale_map[y * sample_map_size.x : (y+1) * sample_map_size.x].mean()
-            scale_sum += row_weight * row_mean
-            scale_weight += row_weight
-        average_scale = scale_sum / scale_weight
-        for y in range(sample_map_size.y):
-            row_weight = math.sin((y + 0.5) / sample_map_size.y * pi)
             scale_map[y * sample_map_size.x : (y+1) * sample_map_size.x] -= \
-                average_scale * row_weight
+                average_scale * row_weight(y) / weight_average
         scale_map = np.maximum(scale_map, 0.0)
     # construct conditional alias table
     row_averages = []
