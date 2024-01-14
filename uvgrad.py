@@ -73,7 +73,7 @@ def trace_duvdxy(ray, ray_dx, ray_dy, heap, accel):
 
 
 @luisa.func
-def render_uvgrad_kernel(image, heap, accel, light_count,
+def render_uvgrad_kernel(image, heap, accel, light_count, env_count,
                          material_buffer, texture_res, camera, spp, seed, use_tent_filter):
     resolution = dispatch_size().xy
     coord = dispatch_id().xy

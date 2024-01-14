@@ -58,12 +58,10 @@ def direct_estimator(ray, sampler, heap, accel, light_count, env_count, material
     if use_MIS:
         # pdf sample (next bounce)
         wi_local = ggx_sample(wo_local, diffuse, specular, roughness, sampler)
-        pdf_bsdf = ggx_sample_pdf(wo_local, wi_local, diffuse, specular, roughness)
         wi = onb.to_world(wi_local)
         if dot(wi, it.ng) < 1e-4 or wi_local.z < 1e-4:
             return radiance
         ray = luisa.make_ray(luisa.offset_ray_origin(it.p, it.ng), wi, 0.0, 1e30)
-        beta = ggx_brdf(wo_local, wi_local, diffuse, specular, roughness) / pdf_bsdf
         # Just repeat tracing...
         origin = it.p
         hit = accel.trace_closest(ray, -1)
@@ -79,7 +77,9 @@ def direct_estimator(ray, sampler, heap, accel, light_count, env_count, material
             emission = heap.buffer_read(float3, 23333, hit.inst)
             pdf_light = sample_light_pdf(origin, light_count, heap, accel, hit.inst, hit.prim, it.p)
         if any(emission > float3(0.0)):
+            pdf_bsdf = ggx_sample_pdf(wo_local, wi_local, diffuse, specular, roughness)
             mis_weight = balanced_heuristic(pdf_bsdf, pdf_light)
+            beta = ggx_brdf(wo_local, wi_local, diffuse, specular, roughness) / pdf_bsdf
             return radiance + beta * mis_weight * emission
 
     return radiance
@@ -101,6 +101,7 @@ def direct_estimator_backward(ray, sampler, heap, accel, light_count, env_count,
     
     # fetch texture
     mat_grad = float4(0.0)
+    mat_grad_uv = it.uv
     mat = read_bsdf(it.uv, material_buffer, texture_res)
     diffuse = mat.xyz
     roughness = mat.w
@@ -132,7 +133,6 @@ def direct_estimator_backward(ray, sampler, heap, accel, light_count, env_count,
     if use_MIS:
         # pdf sample (next bounce)
         wi_local = ggx_sample(wo_local, diffuse, specular, roughness, sampler)
-        pdf_bsdf = ggx_sample_pdf(wo_local, wi_local, diffuse, specular, roughness)
         wi = onb.to_world(wi_local)
         if dot(wi, it.ng) < 1e-4 or wi_local.z < 1e-4:
             write_bsdf_grad(it.uv, mat_grad, d_material_buffer, texture_res)
@@ -144,7 +144,7 @@ def direct_estimator_backward(ray, sampler, heap, accel, light_count, env_count,
         if hit.miss():
             # return radiance
             emission = heap.texture2d_sample(23332, direction_to_uv(ray.get_dir())).xyz if env_count > 0 else float3(0.0)
-            pdf_light = env_sampled_light_pdf(heap, ray.get_dir())
+            pdf_light = env_sampled_light_pdf(heap, ray.get_dir()) if env_count > 0 else 0.0
         else:
             it = surface_interact(hit, heap, accel)
             # backfacing geometry
@@ -154,16 +154,17 @@ def direct_estimator_backward(ray, sampler, heap, accel, light_count, env_count,
             emission = heap.buffer_read(float3, 23333, hit.inst)
             pdf_light = sample_light_pdf(origin, light_count, heap, accel, hit.inst, hit.prim, it.p)
         if any(emission > float3(0.0)):
+            pdf_bsdf = ggx_sample_pdf(wo_local, wi_local, diffuse, specular, roughness)
             mis_weight = balanced_heuristic(pdf_bsdf, pdf_light)
             # differentiate w.r.t. material
             with autodiff():
                 requires_grad(mat)
-                beta = ggx_brdf(wo_local, wi_light_local, mat.xyz, 0.04, mat.w) / pdf_bsdf
+                beta = ggx_brdf(wo_local, wi_local, mat.xyz, 0.04, mat.w) / pdf_bsdf
                 le = beta * mis_weight * emission
                 backward(le, le_grad)
                 mat_grad += grad(mat)
         
-    write_bsdf_grad(it.uv, mat_grad, d_material_buffer, texture_res)
+    write_bsdf_grad(mat_grad_uv, mat_grad, d_material_buffer, texture_res)
 
 render_direct_kernel = derive_render_kernel(direct_estimator)
 render_direct_backward_kernel = derive_render_backward_kernel(direct_estimator_backward)

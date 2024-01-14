@@ -37,13 +37,14 @@ sphere_camera1 = Camera(
     up = float3(0.0, 1.0, 0.0)
 )
 
-scene = Scene(sphere_model, integrator='collocated')
+scene = Scene(sphere_model, integrator='direct')
+scene.add_envmap('assets/empty_workshop_4k.exr')
 scene.camera = sphere_camera1
 
 diffuse_file = 'assets/wood_olive/wood_olive_wood_olive_basecolor.png'
 roughness_file = 'assets/wood_olive/wood_olive_wood_olive_roughness.png'
-diffuse_file = 'assets/cboxd.png'
-roughness_file = 'assets/cboxr.png'
+# diffuse_file = 'assets/cboxd.png'
+# roughness_file = 'assets/cboxr.png'
 material_GT = load_material(diffuse_file, roughness_file)
 ImgRes = 1024, 1024
 print("Image resolution:", ImgRes)
@@ -52,7 +53,7 @@ print("Image resolution:", ImgRes)
 # for it in tqdm(range(50)):
 #     Itmp = scene.render(material_GT, res=ImgRes, spp=64, seed=random.randint(0, 2147483647)) # seed defaults to 0
 
-I_GT = scene.render(material_GT, res=ImgRes, spp=256) # seed defaults to 0
+I_GT = scene.render(material_GT, res=ImgRes, spp=1024) # seed defaults to 0
 Image.fromarray((I_GT[...,0:3].clamp(min=0,max=1)**0.454*255).to(torch.uint8).cpu().numpy()).save('results/gt.png')
 # quit()
 
@@ -77,19 +78,23 @@ material = torch.rand((*TexRes,4), device='cuda')
 material.requires_grad_()
 optimizer = torch.optim.Adam([material], lr=0.01)
 for it in tqdm(range(500)):
-    I = scene.render(material, res=ImgRes, spp=4, seed=random.randint(0, 2147483647))
+    I = scene.render(material, res=ImgRes, spp=64, seed=random.randint(0, 2147483647))
     ((I-I_GT)**2).sum().backward()
+    # quit()
     optimizer.step()
     optimizer.zero_grad()
     material.data.clamp_(min=1e-3, max=1)
 
 
 # Rendered image of reconstruction
-I = scene.render(material, res=ImgRes, spp=64)
+I = scene.render(material, res=ImgRes, spp=1024)
 print("MSE", ((I-I_GT)**2).mean().item())
 Image.fromarray((I[...,0:3].clamp(min=0,max=1)**0.454*255).to(torch.uint8).cpu().numpy()).save('results/a.png')
 
 # Reconstructed texture
-Image.fromarray((material[...,0:3].clamp(min=0, max=1)**0.454*255).detach().cpu().numpy().astype("uint8")).save("results/d.png")
-Image.fromarray((material[...,3].clamp(min=0, max=1)**0.454*255).detach().cpu().numpy().astype("uint8")).save("results/dr.png")
+imageio.imwrite('results/diffuse.exr', material[...,0:3].detach().cpu())
+imageio.imwrite('results/roughness.exr', material[...,3].detach().cpu())
+
+# Image.fromarray((material[...,0:3].clamp(min=0, max=1)**0.454*255).detach().cpu().numpy().astype("uint8")).save("results/d.png")
+# Image.fromarray((material[...,3].clamp(min=0, max=1)**0.454*255).detach().cpu().numpy().astype("uint8")).save("results/dr.png")
 
