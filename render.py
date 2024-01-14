@@ -114,6 +114,7 @@ class Scene:
         if self.inst_count > 10000:
             raise RuntimeError('exceeding maximum number of mesh instances')
         # light info
+        self.env_count = 0
         self.light_count = len(light_insts)
         self.emissions = inst_metadata
         self.inst_metadata_buffer = luisa.buffer(inst_metadata)
@@ -152,7 +153,7 @@ class Scene:
             # convert RGB to RGBA
             img = np.concatenate([img, np.ones_like(img[..., :1])], axis=-1)
         load_envmap(self.heap, img)
-        
+        self.env_count = 1
 
 
     def render_forward(self, material, res, spp, seed, kernel=None):
@@ -165,11 +166,12 @@ class Scene:
         if kernel is None:
             kernel = self.forward_kernel
         kernel(image_buffer,
-            self.heap, self.accel, self.light_count,
+            self.heap, self.accel, self.light_count, self.env_count,
             material_buffer, int2(*texture_res), self.camera,
             spp, seed, self.use_tent_filter, dispatch_size=res)
         luisa.synchronize()
         return image
+    
     
     def render_backward(self, grad_output, d_material, material, res, spp, seed, kernel=None):
         assert material.ndim == 3 and material.shape[2] == 4
@@ -189,7 +191,7 @@ class Scene:
         if kernel is None:
             kernel = self.backward_kernel
         kernel(d_image,
-            self.heap, self.accel, self.light_count,
+            self.heap, self.accel, self.light_count, self.env_count,
             d_material_buffer, material_buffer, int2(*texture_res), self.camera,
             spp, seed+1, self.use_tent_filter, dispatch_size=res)
         # print("REF", len(gc.get_referrers(grad_output)), len(gc.get_referrers(d_image)))

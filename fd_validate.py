@@ -23,7 +23,7 @@ cbox_model = [
     ('assets/cbox-light.obj', None, float3(20.0))
 ]
 sphere_model = [
-    ('assets/sphere.obj', 1, float3(0.0)),
+    ('assets/sphere.obj', None, float3(0.0)),
 ]
 cbox_camera1 = Camera(
     fov = 50 / 180 * 3.1415926,
@@ -38,13 +38,21 @@ sphere_camera1 = Camera(
     up = float3(0.0, 1.0, 0.0)
 )
 
-scene = Scene(cbox_model, integrator='direct')
-scene.camera = cbox_camera1
+# scene = Scene(cbox_model, integrator='direct')
+# scene.camera = cbox_camera1
+scene = Scene(sphere_model, integrator='direct')
+scene.add_envmap('assets/empty_workshop_4k.exr')
+scene.camera = sphere_camera1
+
 
 diffuse_file = 'assets/wood_olive/wood_olive_wood_olive_basecolor.png'
 roughness_file = 'assets/wood_olive/wood_olive_wood_olive_roughness.png'
 material_GT = load_material(diffuse_file, roughness_file)
+material_black = torch.zeros_like(material_GT)
+material_black[...,3] = 1.0
 
+
+print("scene loaded")
 
 def compare_fdad(scene, material, texidx, imgidx, res):
     """Compare AD results with finite difference (FD)
@@ -125,34 +133,46 @@ print()
 material_GT.requires_grad_()
 material_GT.grad = None
 I_GT = scene.render(material_GT, res=(1024,1024), spp=128) # seed defaults to 0
+print("GT rendered")
 
-if True:
+if False:
     # OVERRIDE to fix observed indices
-    imgidx = (373, 436, 0)
-    texidx = (550, 762, 3)
+    imgidx = (435, 782, 1)
+    texidx = (741, 547, 3)
     I_GT[imgidx].backward()
 else:
     print("Selecting pair: ", end='')
     while True:
         material_GT.grad = None
         I_GT = scene.render(material_GT, res=(1024,1024), spp=128) # seed defaults to 0
+        I_black = scene.render(material_black, res=(1024,1024), spp=128) # seed defaults to 0
         print("#", end='')
         # randomly find points of interest in image
         print(f"GT min={I_GT.min().item()}, max={I_GT.max().item()}, contains_nan={I_GT.isnan().any().item()}")
         # Avoid sampling a pixel on the light source, because the material derivatives will be zero
-        is_light_pixel = (I_GT == torch.tensor((20,20,20,1), dtype=torch.float32, device='cuda')).all(axis=-1)
-        I_no_light = I_GT.clone()
-        I_no_light[is_light_pixel] = torch.tensor((0,0,0,1), dtype=torch.float32, device='cuda')
+        img_weight = I_GT.clone()
+        light_mask = (I_GT == I_black).all(axis=-1)
+        print(light_mask.sum().item(), "light pixels")
+        img_weight[light_mask] = 0.0
+        # is_light_pixel = (I_GT == torch.tensor((20,20,20,1), dtype=torch.float32, device='cuda')).all(axis=-1)
+        # I_no_light = I_GT.clone()
+        # I_no_light[is_light_pixel] = torch.tensor((0,0,0,1), dtype=torch.float32, device='cuda')
         # Don't select the alpha channel (c=3) because the derivatives will all be zero
-        imgidx = importance_sample_tensor(I_no_light[...,0:3])
+        imgidx = importance_sample_tensor(img_weight[...,0:3])
+
+        # save img_weight to file
+        imageio.imwrite('imgweight.exr', img_weight.detach().cpu())
+
 
         # randomly find points of interest in material
         I_GT[imgidx].backward()
+        # I_GT.sum().backward()
         print(f"grad min={material_GT.grad.min().item()}, max={material_GT.grad.max().item()}, contains_nan={material_GT.grad.isnan().any().item()}")
         if material_GT.grad.min().item()==0.0 and material_GT.grad.max().item()==0.0 or material_GT.grad.isnan().any().item():
             print("BAD! ")
             print("imgidx", imgidx)
             print("pixel value", I_GT[imgidx])
+            quit()
             # print("texidx", texidx)
         texidx = importance_sample_tensor(material_GT.grad.abs())
         if texidx[-1]==3 or not try_roughness:

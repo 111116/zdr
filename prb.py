@@ -6,6 +6,7 @@ from .integrator import derive_render_kernel, derive_render_backward_kernel
 from .interaction import read_bsdf, write_bsdf_grad, surface_interact
 from .light import sample_light, sample_light_pdf
 from .onb import *
+from .envmap import direction_to_uv, uv_to_direction, env_sampled_light_pdf
 
 @luisa.func
 def balanced_heuristic(pdf_a, pdf_b):
@@ -15,7 +16,7 @@ max_depth = 16
 rr_depth = 2
 
 @luisa.func
-def path_estimator(ray, sampler, heap, accel, light_count, material_buffer, texture_res):
+def path_estimator(ray, sampler, heap, accel, light_count, env_count, material_buffer, texture_res):
     radiance = float3(0.0) # path accumulated Le
     beta = float3(1.0) # path throughput
     pdf_bsdf = 1e30 # current angular sample density
@@ -23,6 +24,11 @@ def path_estimator(ray, sampler, heap, accel, light_count, material_buffer, text
         # ray intersection
         hit = accel.trace_closest(ray, -1)
         if hit.miss():
+            if env_count > 0: # has envmap
+                emission = beta * heap.texture2d_sample(23332, direction_to_uv(ray.get_dir())).xyz
+                pdf_light = env_sampled_light_pdf(heap, ray.get_dir())
+                mis_weight = balanced_heuristic(pdf_bsdf, pdf_light)
+                radiance += beta * mis_weight * emission
             break
         it = surface_interact(hit, heap)
         # discard backfacing geometry
@@ -32,9 +38,11 @@ def path_estimator(ray, sampler, heap, accel, light_count, material_buffer, text
         # hit light?
         emission = heap.buffer_read(float3, 23333, hit.inst)
         if any(emission > float3(0.0)):
-            pdf_light = sample_light_pdf(ray.get_origin(), light_count, heap, hit.inst, hit.prim, it.p)
+            pdf_light = sample_light_pdf(ray.get_origin(), light_count, env_count, heap, hit.inst, hit.prim, it.p)
             mis_weight = balanced_heuristic(pdf_bsdf, pdf_light)
             radiance += beta * mis_weight * emission
+            break
+        if hit.inst > 0: # treat everything as light other than the first object
             break
 
         # fetch material texture
@@ -46,7 +54,7 @@ def path_estimator(ray, sampler, heap, accel, light_count, material_buffer, text
         onb = make_onb(it.ns)
         wo_local = onb.to_local(-ray.get_dir())
         # draw light sample
-        light = sample_light(it.p, light_count, heap, sampler) # (wi, dist, pdf, eval)
+        light = sample_light(it.p, light_count, env_count, heap, sampler) # (wi, dist, pdf, eval)
         shadow_ray = luisa.make_ray(it.p, light.wi, 1e-4, light.dist)
         occluded = accel.trace_any(shadow_ray, -1)
         wi_light_local = onb.to_local(light.wi)

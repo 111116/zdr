@@ -8,7 +8,11 @@ from .onb import *
 
 
 @luisa.func
-def collocated_estimator(ray, sampler, heap, accel, light_count, material_buffer, texture_res):
+def collocated_estimator(ray, sampler, heap, accel, light_count, env_count, material_buffer, texture_res):
+    """Compute radiance for a ray using collocated estimator.
+    A point light source is placed at the camera position.
+    All other light sources / envmaps in the scene are ignored.
+    """
     hit = accel.trace_closest(ray, -1)
     if hit.miss():
         return float3(0.0)
@@ -28,7 +32,7 @@ def collocated_estimator(ray, sampler, heap, accel, light_count, material_buffer
 
 
 @luisa.func
-def collocated_estimator_backward(ray, sampler, heap, accel, light_count,
+def collocated_estimator_backward(ray, sampler, heap, accel, light_count, env_count,
                                d_material_buffer, material_buffer, texture_res, le_grad):
     hit = accel.trace_closest(ray, -1)
     if hit.miss():

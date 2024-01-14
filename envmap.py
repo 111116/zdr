@@ -72,7 +72,6 @@ def sample_alias_table(table, n, u_in, offset):
     Returns:
         A tuple of (index, u), where index is the sampled index, and
         u is the remapped random number in [0, 1).
-        TODO tuple is not supported yet
     """
     u = u_in * n
     i = clamp(int(u), 0, n - 1)
@@ -94,7 +93,6 @@ def sample_alias_table_bindless(heap, bufidx, n, u_in, offset):
     Returns:
         A tuple of (index, u), where index is the sampled index, and
         u is the remapped random number in [0, 1).
-        TODO tuple is not supported yet
     """
     u = u_in * n
     i = clamp(int(u), 0, n - 1)

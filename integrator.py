@@ -7,7 +7,7 @@ from .corrmj import *
 
 def derive_render_kernel(integrator_func):
     @luisa.func
-    def _kernel(image, heap, accel, light_count,
+    def _kernel(image, heap, accel, light_count, env_count,
                 material_buffer, texture_res, camera, spp, seed, use_tent_filter):
         resolution = dispatch_size().xy
         coord = dispatch_id().xy
@@ -21,7 +21,7 @@ def derive_render_kernel(integrator_func):
                 pixel_offset = tent_warp(pixel_offset, 1.0) + float2(0.5)
             pixel = 2.0 / resolution * (float2(coord) + pixel_offset) - 1.0
             ray = generate_ray(camera, pixel)
-            radiance = integrator_func(ray, sampler, heap, accel, light_count,
+            radiance = integrator_func(ray, sampler, heap, accel, light_count, env_count,
                                        material_buffer, texture_res)
             if not any(isnan(radiance)):
                 s += clamp(radiance, 0.0, 100000.0)
@@ -30,7 +30,7 @@ def derive_render_kernel(integrator_func):
 
 def derive_render_backward_kernel(integrator_backward_func):
     @luisa.func
-    def _kernel(d_image, heap, accel, light_count,
+    def _kernel(d_image, heap, accel, light_count, env_count,
                 d_material_buffer, material_buffer, texture_res, camera, spp, seed, use_tent_filter):
         resolution = dispatch_size().xy
         coord = dispatch_id().xy
@@ -46,6 +46,6 @@ def derive_render_backward_kernel(integrator_backward_func):
                 pixel_offset = tent_warp(pixel_offset, 1.0) + float2(0.5)
             pixel = 2.0 / resolution * (float2(coord) + pixel_offset) - 1.0
             ray = generate_ray(camera, pixel)
-            integrator_backward_func(ray, sampler, heap, accel, light_count,
+            integrator_backward_func(ray, sampler, heap, accel, light_count, env_count,
                                      d_material_buffer, material_buffer, texture_res, le_grad)
     return _kernel
