@@ -147,12 +147,12 @@ class Scene:
         self.light_count = len(light_insts)
         self.light_insts_buffer.copy_from(light_insts + [0]*(self.inst_count - self.light_count))
     
-    def add_envmap(self, filename):
+    def add_envmap(self, filename, compensate_mis=True):
         img = np.asarray(imageio.imread(filename))
         if img.shape[2] == 3:
             # convert RGB to RGBA
             img = np.concatenate([img, np.ones_like(img[..., :1])], axis=-1)
-        load_envmap(self.heap, img)
+        load_envmap(self.heap, img, compensate_mis=compensate_mis)
         self.env_count = 1
 
 

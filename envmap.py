@@ -7,7 +7,7 @@ import imageio
 from .light import LightSampleStruct
 
 
-compensate_mis = True
+
 
 AliasEntry = luisa.StructType(
     prob=float,
@@ -113,7 +113,7 @@ def rgb_to_cie_y(rgb: float3):
 
 sample_map_size = int2(512, 256)
 
-def load_envmap(heap, img):
+def load_envmap(heap, img, compensate_mis=True):
     """Load environment map from image.
     Args:
         heap: A Luisa bindless array.
