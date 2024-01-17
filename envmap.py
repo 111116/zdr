@@ -126,7 +126,6 @@ def load_envmap(heap, img, compensate_mis=True):
         else:
             # TODO due to a bug in lcpy, images are fucked up when its not square
             raise RuntimeError('envmap must be strictly 1:2 or 1:1')
-    print(img.shape, img.dtype)
     tex = luisa.image2d(img)
     heap.emplace(23332, tex) # default filter & address mode
     heap.update()
