@@ -84,8 +84,11 @@ def render_uvgrad_kernel(image, heap, accel, light_count, env_count,
         if use_tent_filter:
             pixel_offset = tent_warp(pixel_offset, 1.0) + float2(0.5)
         pixel = 2.0 / resolution * (float2(coord) + pixel_offset) - 1.0
+        pixel.y *= resolution.y / resolution.x
         pixel_dx = 2.0 / resolution * (float2(coord) + pixel_offset + float2(1, 0)) - 1.0
+        pixel_dx.y *= resolution.y / resolution.x
         pixel_dy = 2.0 / resolution * (float2(coord) + pixel_offset + float2(0, 1)) - 1.0
+        pixel_dy.y *= resolution.y / resolution.x
         ray = generate_ray(camera, pixel)
         ray_dx = generate_ray(camera, pixel_dx)
         ray_dy = generate_ray(camera, pixel_dy)

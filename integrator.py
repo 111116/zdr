@@ -20,6 +20,7 @@ def derive_render_kernel(integrator_func):
             if use_tent_filter:
                 pixel_offset = tent_warp(pixel_offset, 1.0) + float2(0.5)
             pixel = 2.0 / resolution * (float2(coord) + pixel_offset) - 1.0
+            pixel.y *= resolution.y / resolution.x
             ray = generate_ray(camera, pixel)
             radiance = integrator_func(ray, sampler, heap, accel, light_count, env_count,
                                        material_buffer, texture_res)
@@ -45,6 +46,7 @@ def derive_render_backward_kernel(integrator_backward_func):
             if use_tent_filter:
                 pixel_offset = tent_warp(pixel_offset, 1.0) + float2(0.5)
             pixel = 2.0 / resolution * (float2(coord) + pixel_offset) - 1.0
+            pixel.y *= resolution.y / resolution.x
             ray = generate_ray(camera, pixel)
             integrator_backward_func(ray, sampler, heap, accel, light_count, env_count,
                                      d_material_buffer, material_buffer, texture_res, le_grad)
